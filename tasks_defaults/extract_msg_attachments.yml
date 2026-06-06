@@ -9,9 +9,13 @@ source_subdir: "Raw_Emails"
 # Destination subfolder for extracted attachments (under root)
 dest_subdir: "Emails_With_Attachments"
 
-# File type filter — list of extensions to extract (e.g. [".xlsx", ".pdf"])
-# Leave as empty list to extract all attachments
-file_types: []
+# File type filter — list of extensions to extract
+# Default: Excel files only. Set to empty list [] to extract all attachments.
+file_types:
+  - ".xlsx"
+  - ".xls"
+  - ".xlsm"
+  - ".xlsb"
 
-# Report filename (placed under root)
-report_file: "Msg_Attachments_Report.csv"
+# Report filename (placed under root) — .xlsx format
+report_file: "report.xlsx"
