@@ -44,9 +44,19 @@ def load_task_config(task_name: str, config_dir: str = None) -> Dict[str, Any]:
     config_path = os.path.join(config_dir, f"{task_name}.yml")
 
     if not os.path.exists(config_path):
-        raise FileNotFoundError(
-            f"Task config not found: {config_path}"
-        )
+        # Try to auto-copy from tasks_defaults/
+        import shutil
+        project_root = Path(__file__).resolve().parent.parent
+        default_path = project_root / "tasks_defaults" / f"{task_name}.yml"
+        if default_path.exists():
+            os.makedirs(config_dir, exist_ok=True)
+            shutil.copy2(str(default_path), config_path)
+            print(f"Created tasks/{task_name}.yml from defaults — edit it for your environment.")
+        else:
+            raise FileNotFoundError(
+                f"Task config not found: {config_path}\n"
+                f"Run 'python main.py init' to create default configs."
+            )
 
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
