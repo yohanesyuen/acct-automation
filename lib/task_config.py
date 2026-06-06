@@ -155,6 +155,33 @@ def parse_task_args(
     return config
 
 
+def unpack_config(config: Dict[str, Any], *keys: str) -> tuple:
+    """
+    Unpack multiple config values in a single assignment via tuple unpacking.
+
+    Args:
+        config: Task configuration dictionary.
+        *keys: Key names to extract. Use "key=default" syntax to specify
+               a default value if the key is missing.
+
+    Returns:
+        Tuple of values in the same order as the requested keys.
+
+    Example:
+        sender_email, keyword, excel_subdir = unpack_config(
+            config, "sender_email", "keyword", "excel_subdir=Excel_Files"
+        )
+    """
+    values = []
+    for key in keys:
+        if "=" in key:
+            key_name, default = key.split("=", 1)
+            values.append(config.get(key_name.strip(), default.strip()))
+        else:
+            values.append(config.get(key.strip()))
+    return tuple(values)
+
+
 def get_output_dir(config: Dict[str, Any], *subdirs: str) -> str:
     """
     Construct an output directory path from the task root and subdirectories.

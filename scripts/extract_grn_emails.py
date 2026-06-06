@@ -16,12 +16,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib.outlook import get_outlook_inbox, filter_emails_by_keyword
-from lib.task_config import parse_task_args, get_output_dir
+from lib.task_config import parse_task_args, unpack_config, get_output_dir
 from lib.utils import sanitize_filename
 
 
 def extract_grn_emails(config):
-    keyword = config.get("keyword", "GRN")
+    (keyword,) = unpack_config(config, "keyword")
     email_folder = get_output_dir(config, config.get("emails_subdir", "Emails"))
     attachment_folder = get_output_dir(config, config.get("attachments_subdir", "Attachments"))
 

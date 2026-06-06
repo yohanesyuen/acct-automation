@@ -23,7 +23,7 @@ from lib.outlook import (
     save_attachment,
 )
 from lib.reporting import write_csv_report
-from lib.task_config import parse_task_args, get_output_dir, get_report_path
+from lib.task_config import parse_task_args, unpack_config, get_output_dir, get_report_path
 from lib.utils import (
     is_excel_file,
     extract_gr_numbers_from_text,
@@ -33,8 +33,7 @@ from lib.utils import (
 
 
 def extract_grn(config):
-    sender_email = config.get("sender_email", "sender@example.com")
-    keyword = config.get("keyword", "GRN")
+    sender_email, keyword = unpack_config(config, "sender_email", "keyword")
     output_folder = get_output_dir(config, config.get("excel_subdir", "Excel_Files"))
     report_path = get_report_path(config, config.get("report_file", "GRN_Report.csv"))
 

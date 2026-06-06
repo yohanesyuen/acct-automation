@@ -29,14 +29,14 @@ from lib.outlook import (
     save_attachment,
 )
 from lib.reporting import write_csv_report
-from lib.task_config import parse_task_args, get_output_dir, get_report_path
+from lib.task_config import parse_task_args, unpack_config, get_output_dir, get_report_path
 from lib.utils import sanitize_filename
 
 
 def extract_attachments(config):
-    sender_email = config.get("sender_email")
-    keyword = config.get("keyword")
-    file_types = config.get("file_types")
+    sender_email, keyword, file_types = unpack_config(
+        config, "sender_email", "keyword", "file_types"
+    )
     output_folder = get_output_dir(config, config.get("attachments_subdir", "Attachments"))
     report_path = get_report_path(config, config.get("report_file", "Attachments_Report.csv"))
 

@@ -29,7 +29,7 @@ from lib.outlook import (
 )
 from lib.excel_search import search_excel_for_gr_pattern, search_excel_for_gr_numbers
 from lib.reporting import write_csv_report
-from lib.task_config import parse_task_args, get_output_dir, get_report_path
+from lib.task_config import parse_task_args, unpack_config, get_output_dir, get_report_path
 from lib.utils import is_excel_file, make_date_prefixed_filename
 
 
@@ -40,11 +40,11 @@ SEARCH_STRATEGIES = {
 
 
 def search_excel_content(config):
-    sender_email = config.get("sender_email", "sender@example.com")
-    keyword = config.get("keyword")  # None means no keyword filter
+    sender_email, keyword, strategy_name = unpack_config(
+        config, "sender_email", "keyword", "search_strategy=pattern"
+    )
     output_folder = get_output_dir(config, config.get("excel_subdir", "Excel_Files"))
     report_path = get_report_path(config, config.get("report_file", "GRN_Report.csv"))
-    strategy_name = config.get("search_strategy", "pattern")
 
     search_fn = SEARCH_STRATEGIES.get(strategy_name)
     if search_fn is None:
