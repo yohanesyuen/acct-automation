@@ -1,0 +1,13 @@
+# Collect Excel files from Attachments directory into a single Excel folder.
+# Copy to tasks/ and customize for your environment.
+
+root: "C:\\path\\to\\output"
+
+# Source subfolder (under root) containing downloaded attachments
+attachments_subdir: "Attachments"
+
+# Destination subfolder (under root) for collected Excel files
+excel_subdir: "Excel_Files"
+
+# Report filename (placed under root)
+report_file: "Excel_Collect_Report.csv"
