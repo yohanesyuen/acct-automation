@@ -71,8 +71,8 @@ def get_headers(file_path: str) -> list:
 
 
 def analyze_headers(config):
-    search_terms, source_subdir = unpack_config(
-        config, "search_term", "source_subdir=Excel_Files"
+    search_terms, exclude_terms, source_subdir = unpack_config(
+        config, "search_term", "exclude_term", "source_subdir=Excel_Files"
     )
     report_file = config.get("report_file", "Header_Analysis_Report.csv")
 
@@ -88,12 +88,23 @@ def analyze_headers(config):
     else:
         search_list = list(search_terms)
 
+    # Normalize exclude_terms to a list
+    if exclude_terms is None or exclude_terms == []:
+        exclude_list = []
+    elif isinstance(exclude_terms, str):
+        exclude_list = [exclude_terms]
+    else:
+        exclude_list = list(exclude_terms)
+
     if not os.path.exists(source_dir):
         print(f"Source directory does not exist: {source_dir}")
         sys.exit(1)
 
     print(f"Analyzing Excel headers in: {source_dir}")
-    print(f"  Search terms: {search_list}\n")
+    print(f"  Search terms: {search_list}")
+    if exclude_list:
+        print(f"  Exclude terms: {exclude_list}")
+    print()
 
     report = []
     files_scanned = 0
@@ -117,17 +128,24 @@ def analyze_headers(config):
                 header_lower = header_info["header"].lower()
                 matched_terms = [t for t in search_list if t.lower() in header_lower]
 
-                if matched_terms:
-                    matches_found += 1
-                    print(f"  MATCH: {filename} | Sheet: {header_info['sheet']} | "
-                          f"Col {header_info['column']}: \"{header_info['header']}\" "
-                          f"(matched: {', '.join(matched_terms)})")
+                if not matched_terms:
+                    continue
 
-                    report.append({
-                        "FileName": filename,
-                        "FilePath": file_path,
-                        "Sheet": header_info["sheet"],
-                        "Column": header_info["column"],
+                # Check exclusions — skip if any exclude term is in the header
+                excluded_by = [t for t in exclude_list if t.lower() in header_lower]
+                if excluded_by:
+                    continue
+
+                matches_found += 1
+                print(f"  MATCH: {filename} | Sheet: {header_info['sheet']} | "
+                      f"Col {header_info['column']}: \"{header_info['header']}\" "
+                      f"(matched: {', '.join(matched_terms)})")
+
+                report.append({
+                    "FileName": filename,
+                    "FilePath": file_path,
+                    "Sheet": header_info["sheet"],
+                    "Column": header_info["column"],
                         "Header": header_info["header"],
                         "MatchedTerms": ", ".join(matched_terms),
                     })

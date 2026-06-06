@@ -8,6 +8,10 @@ root: "C:\\path\\to\\output"
 search_term:
   - "GR"
 
+# Substring(s) to exclude from matches (case-insensitive)
+# Headers matching a search_term but also containing an exclude_term are skipped
+exclude_term: []
+
 # Directory containing Excel files to scan (under root)
 source_subdir: "Excel_Files"
 
