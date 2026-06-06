@@ -1,9 +1,9 @@
 """
 Filter processed emails by sender or recipient contacts.
 
-Reads .msg files from a source directory (e.g. GR_Candidates) and copies
-only those where any of the specified contacts appear as sender, To, or CC
-into a destination folder. Generates a report.xlsx and metadata.yml per email.
+Reads unpacked email folders (each containing metadata.yml + attachments)
+from a source directory and copies only those where any specified contact
+appears as sender, To, or CC. Generates a report.xlsx.
 
 Usage:
     python scripts/filter_by_contacts.py
@@ -12,14 +12,12 @@ Usage:
 
 import os
 import sys
-import glob
 import shutil
 from pathlib import Path
 
 # Ensure project root is on sys.path so 'lib' package resolves correctly.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import extract_msg
 import openpyxl
 import yaml
 
@@ -50,29 +48,22 @@ def _write_excel_report(report_path: str, rows: list) -> bool:
     return True
 
 
-def _write_metadata(folder_path: str, msg) -> None:
-    """Write a metadata.yml file with email details."""
-    metadata = {
-        "from": msg.sender or "",
-        "to": msg.to or "",
-        "cc": msg.cc or "",
-        "subject": msg.subject or "",
-        "date": str(msg.date or ""),
-        "body": (msg.body or "")[:2000],
-    }
-
+def _load_metadata(folder_path: str) -> dict:
+    """Load metadata.yml from an email subfolder."""
     metadata_path = os.path.join(folder_path, "metadata.yml")
-    with open(metadata_path, "w", encoding="utf-8") as f:
-        yaml.dump(metadata, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    if not os.path.exists(metadata_path):
+        return None
+    with open(metadata_path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
 
-def _contact_matches(msg, contacts_lower: list) -> bool:
-    """Check if any contact appears in sender, To, or CC fields."""
-    sender = (msg.sender or "").lower()
-    to_field = (msg.to or "").lower()
-    cc_field = (msg.cc or "").lower()
+def _contact_matches(metadata: dict, contacts_lower: list) -> bool:
+    """Check if any contact appears in from, to, or cc fields."""
+    from_field = (metadata.get("from") or "").lower()
+    to_field = (metadata.get("to") or "").lower()
+    cc_field = (metadata.get("cc") or "").lower()
 
-    all_fields = f"{sender} {to_field} {cc_field}"
+    all_fields = f"{from_field} {to_field} {cc_field}"
 
     return any(contact in all_fields for contact in contacts_lower)
 
@@ -102,94 +93,71 @@ def filter_by_contacts(config):
         print(f"Source directory does not exist: {source_dir}")
         sys.exit(1)
 
-    # Find all .msg files recursively
-    msg_files = glob.glob(os.path.join(source_dir, "**", "*.msg"), recursive=True)
+    # Find all subfolders that contain a metadata.yml
+    email_folders = [
+        d for d in sorted(os.listdir(source_dir))
+        if os.path.isdir(os.path.join(source_dir, d))
+        and os.path.exists(os.path.join(source_dir, d, "metadata.yml"))
+    ]
 
-    if not msg_files:
-        print(f"No .msg files found in: {source_dir}")
+    if not email_folders:
+        print(f"No email folders with metadata.yml found in: {source_dir}")
         return
 
     print(f"Filtering emails by contacts from: {source_dir}")
     print(f"  Contacts: {contacts_list}")
     print(f"  Destination: {dest_dir}")
-    print(f"  Found {len(msg_files)} .msg file(s)\n")
+    print(f"  Found {len(email_folders)} email folder(s)\n")
 
     report = []
     matched = 0
     skipped = 0
 
-    for msg_path in msg_files:
-        try:
-            msg = extract_msg.Message(msg_path)
-        except Exception as e:
-            print(f"  Error reading {os.path.basename(msg_path)}: {e}")
+    for folder_name in email_folders:
+        folder_path = os.path.join(source_dir, folder_name)
+        metadata = _load_metadata(folder_path)
+
+        if metadata is None:
+            skipped += 1
             continue
 
-        if not _contact_matches(msg, contacts_lower):
+        if not _contact_matches(metadata, contacts_lower):
             skipped += 1
             continue
 
         matched += 1
 
-        # Create per-email subfolder: <sanitized_subject>_<YYYYMMDD_HHMMSS>/
-        subject = msg.subject or "No Subject"
-        safe_subject = sanitize_filename(subject)
-        try:
-            msg_date = msg.date
-            if msg_date:
-                date_str = msg_date.strftime("%Y%m%d_%H%M%S")
-            else:
-                date_str = "00000000_000000"
-        except Exception:
-            date_str = "00000000_000000"
-
-        subfolder_name = f"{safe_subject}_{date_str}"
-        subfolder = os.path.join(dest_dir, subfolder_name)
-        os.makedirs(subfolder, exist_ok=True)
-
-        # Copy the .msg file itself
-        dest_msg = os.path.join(subfolder, os.path.basename(msg_path))
-        if not os.path.exists(dest_msg):
-            shutil.copy2(msg_path, dest_msg)
-
-        # Extract all attachments
-        for att in msg.attachments:
-            filename = att.longFilename or att.shortFilename
-            if not filename:
-                continue
-            output_path = os.path.join(subfolder, filename)
-            if not os.path.exists(output_path):
-                try:
-                    with open(output_path, "wb") as f:
-                        f.write(att.data)
-                except Exception:
-                    pass
-
-        # Write metadata
-        try:
-            _write_metadata(subfolder, msg)
-        except Exception:
+        # Copy entire folder to destination
+        dest_folder = os.path.join(dest_dir, folder_name)
+        if not os.path.exists(dest_folder):
+            shutil.copytree(folder_path, dest_folder)
+        else:
+            # Folder already copied — skip
             pass
 
-        print(f"  MATCH: {subfolder_name} (from: {msg.sender or 'unknown'})")
+        # List attachments (everything except metadata.yml)
+        attachments = [
+            f for f in os.listdir(folder_path)
+            if f != "metadata.yml" and os.path.isfile(os.path.join(folder_path, f))
+        ]
+
+        print(f"  MATCH: {folder_name} (from: {metadata.get('from', 'unknown')})")
 
         report.append({
-            "SubFolder": subfolder_name,
-            "Subject": subject,
-            "From": msg.sender or "",
-            "To": msg.to or "",
-            "CC": msg.cc or "",
-            "Date": str(msg.date or ""),
-            "Attachments": ", ".join(
-                (a.longFilename or a.shortFilename or "") for a in msg.attachments
-            ),
-            "DestPath": subfolder,
+            "Folder": folder_name,
+            "Subject": metadata.get("subject", ""),
+            "From": metadata.get("from", ""),
+            "To": metadata.get("to", ""),
+            "CC": metadata.get("cc", ""),
+            "Date": metadata.get("date", ""),
+            "Attachments": ", ".join(attachments),
+            "DestPath": dest_folder,
         })
 
     if _write_excel_report(report_path, report):
         print(f"\nReport saved to: {report_path}")
 
-    print(f"\nDone. {matched} matched, {skipped} skipped out of {len(msg_files)} email(s).")
+    print(f"\nDone. {matched} matched, {skipped} skipped out of {len(email_folders)} email(s).")
 
 
 if __name__ == "__main__":
