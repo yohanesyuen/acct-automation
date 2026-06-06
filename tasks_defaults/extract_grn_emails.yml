@@ -1,0 +1,11 @@
+# Extract GRN-related emails and their attachments from Outlook Inbox.
+# Copy to tasks/ and customize for your environment.
+
+root: "C:\\path\\to\\output"
+
+keyword:
+  - "GRN"
+
+# Subdirectories (constructed from root)
+emails_subdir: "Emails"
+attachments_subdir: "Attachments"

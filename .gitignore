@@ -23,6 +23,9 @@ Desktop.ini
 # Generated output
 pre_prompt.md
 
+# Task configs (user-specific, generated via: python main.py init)
+tasks/
+
 # Extracted data (task output — don't commit user data)
 Excel_Files/
 Attachments/

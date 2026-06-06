@@ -1,0 +1,14 @@
+# Extract Excel attachments from Outlook emails (GRN criteria).
+# Copy to tasks/ and customize for your environment.
+
+root: "C:\\path\\to\\output"
+
+sender_email:
+  - "sender@example.com"
+keyword: "GRN"
+
+# Subdirectories (constructed from root)
+excel_subdir: "Excel_Files"
+
+# Report filename (placed under root)
+report_file: "GRN_Excel_Report.csv"

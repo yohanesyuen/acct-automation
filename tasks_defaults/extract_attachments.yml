@@ -1,0 +1,17 @@
+# Extract all attachments from emails matching sender address(es).
+# Copy to tasks/ and customize for your environment.
+
+root: "C:\\path\\to\\output"
+
+sender_email:
+  - "sender@example.com"
+
+# Keyword filter — list of keywords to match in subject or body (any match passes)
+# Leave as empty list to disable keyword filtering
+keyword: []
+
+# Subdirectories (constructed from root)
+attachments_subdir: "Attachments"
+
+# Report filename (placed under root)
+report_file: "Attachments_Report.csv"
