@@ -1,12 +1,14 @@
 """
-Find GR numbers (8-digit format like 26000117) inside Excel attachments.
+Search Excel attachments from Outlook emails for GR numbers in cell content.
 
-Similar to extract_grn_search_content but uses the stricter 8-digit GR
-number search (numbers starting with '2'). No keyword filter on emails —
-just filters by sender.
+Supports two search strategies (configurable via YAML or --search-strategy):
+  - "pattern": regex match for GR references (e.g. GR 12345, GR-12345)
+  - "gr_numbers": strict 8-digit numbers starting with 2 (e.g. 26000117)
 
 Usage:
-    python scripts/find_gr_numbers.py
+    python scripts/search_excel_content.py
+    python scripts/search_excel_content.py --search-strategy gr_numbers
+    python scripts/search_excel_content.py --task find_gr_numbers
 """
 
 import os
@@ -25,21 +27,36 @@ from lib.outlook import (
     save_attachment_to_temp,
     cleanup_temp_file,
 )
-from lib.excel_search import search_excel_for_gr_numbers
+from lib.excel_search import search_excel_for_gr_pattern, search_excel_for_gr_numbers
 from lib.reporting import write_csv_report
 from lib.task_config import parse_task_args, get_output_dir, get_report_path
 from lib.utils import is_excel_file, make_date_prefixed_filename
 
 
-def find_gr_numbers(config):
+SEARCH_STRATEGIES = {
+    "pattern": search_excel_for_gr_pattern,
+    "gr_numbers": search_excel_for_gr_numbers,
+}
+
+
+def search_excel_content(config):
     sender_email = config.get("sender_email", "sender@example.com")
+    keyword = config.get("keyword")  # None means no keyword filter
     output_folder = get_output_dir(config, config.get("excel_subdir", "Excel_Files"))
     report_path = get_report_path(config, config.get("report_file", "GRN_Report.csv"))
+    strategy_name = config.get("search_strategy", "pattern")
+
+    search_fn = SEARCH_STRATEGIES.get(strategy_name)
+    if search_fn is None:
+        print(f"Error: unknown search_strategy '{strategy_name}'")
+        print(f"Available: {', '.join(SEARCH_STRATEGIES.keys())}")
+        sys.exit(1)
 
     inbox = get_outlook_inbox()
-    emails = filter_emails_by_sender_and_keyword(inbox, sender_email, keyword=None)
+    emails = filter_emails_by_sender_and_keyword(inbox, sender_email, keyword=keyword)
 
-    print(f"Searching emails from {sender_email} for Excel files with 8-digit GR numbers...")
+    print(f"Searching Excel attachments (strategy: {strategy_name}, sender: {sender_email}"
+          f"{f', keyword: {keyword}' if keyword else ''})...")
 
     report = []
 
@@ -48,14 +65,14 @@ def find_gr_numbers(config):
         print(f"  Checking: {info.filename}...")
 
         try:
-            gr_numbers = search_excel_for_gr_numbers(temp_path)
+            gr_numbers = search_fn(temp_path)
 
             if gr_numbers:
                 new_filename = make_date_prefixed_filename(info.received_time, info.filename)
                 dest_path = os.path.join(output_folder, new_filename)
                 shutil.copy2(temp_path, dest_path)
 
-                print(f"  SUCCESS: {info.filename} (GR: {', '.join(gr_numbers)})")
+                print(f"  SAVED: {info.filename} (GR: {', '.join(gr_numbers)})")
 
                 report.append({
                     "FileName": new_filename,
@@ -82,7 +99,7 @@ def find_gr_numbers(config):
 
 if __name__ == "__main__":
     config = parse_task_args(
-        description="Find GR numbers (8-digit format) inside Excel attachments.",
-        default_task="find_gr_numbers",
+        description="Search Excel attachments for GR numbers in cell content.",
+        default_task="extract_grn_search_content",
     )
-    find_gr_numbers(config)
+    search_excel_content(config)
