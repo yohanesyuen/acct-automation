@@ -1,9 +1,10 @@
 """
 Extract attachments from emails matching sender addresses, filtered by filename keyword.
 
-Filters emails by sender, then saves only attachments whose filename
-contains any of the specified keywords (case-insensitive).
-If no keywords are specified, all attachments are saved.
+Filters emails by sender, then checks if any attachment in the email has a
+filename containing one of the keywords (case-insensitive). If a match is
+found, ALL attachments from that email are saved.
+If no keywords are specified, all attachments from matching senders are saved.
 
 Usage:
     python scripts/extract_attachments.py
@@ -44,7 +45,7 @@ def extract_attachments(config):
         keyword_list = list(keyword)
 
     inbox = get_outlook_inbox()
-    # Filter by sender only — keyword matching is done on attachment filenames
+    # Filter by sender only — keyword is matched against attachment filenames below
     emails = filter_emails(inbox, sender_email=sender_email, keyword=None)
 
     senders_display = sender_email if isinstance(sender_email, list) else [sender_email or "all"]
@@ -56,10 +57,21 @@ def extract_attachments(config):
     report = []
 
     for info in iter_attachments(emails):
-        # If keywords specified, only save attachments whose filename matches
+        # If keywords specified, check if THIS email has any attachment
+        # with a matching filename. We do this per-attachment but need to
+        # check all siblings. Access the parent email's attachments list.
         if keyword_list:
-            filename_lower = info.filename.lower()
-            if not any(k.lower() in filename_lower for k in keyword_list):
+            try:
+                parent_email = info.attachment_ref.Parent
+                has_match = False
+                for i in range(1, parent_email.Attachments.Count + 1):
+                    att_name = parent_email.Attachments.Item(i).FileName.lower()
+                    if any(k.lower() in att_name for k in keyword_list):
+                        has_match = True
+                        break
+                if not has_match:
+                    continue
+            except Exception:
                 continue
 
         new_filename = make_date_prefixed_filename(info.received_time, info.filename)
