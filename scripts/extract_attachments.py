@@ -30,7 +30,7 @@ from lib.outlook import (
 )
 from lib.reporting import write_csv_report
 from lib.task_config import parse_task_args, get_output_dir, get_report_path
-from lib.utils import make_date_prefixed_filename, sanitize_filename
+from lib.utils import sanitize_filename
 
 
 def extract_attachments(config):
@@ -98,8 +98,13 @@ def extract_attachments(config):
                 print(f"  [keyword] ERROR checking email: {e}")
                 continue
 
-        new_filename = make_date_prefixed_filename(info.received_time, info.filename)
-        dest_path = os.path.join(output_folder, new_filename)
+        new_filename = info.filename
+        # Create per-email subfolder: <sanitized_subject>_<YYYYMMDD_HHMMSS>/
+        safe_subject = sanitize_filename(info.email_subject)
+        date_str = info.received_time.strftime("%Y%m%d_%H%M%S")
+        subfolder = os.path.join(output_folder, f"{safe_subject}_{date_str}")
+        os.makedirs(subfolder, exist_ok=True)
+        dest_path = os.path.join(subfolder, new_filename)
 
         try:
             save_attachment(info.attachment_ref, dest_path)
@@ -111,6 +116,7 @@ def extract_attachments(config):
                 "EmailSubject": info.email_subject,
                 "SenderEmail": info.email_sender,
                 "ReceivedDate": str(info.received_time),
+                "SubFolder": f"{safe_subject}_{date_str}",
                 "FilePath": dest_path,
             })
         except Exception as e:
