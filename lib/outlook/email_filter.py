@@ -11,7 +11,7 @@ from typing import Generator, List, Optional, Union
 def filter_emails(
     inbox,
     sender_email: Optional[Union[str, List[str]]] = None,
-    keyword: Optional[str] = None,
+    keyword: Optional[Union[str, List[str]]] = None,
     require_attachments: bool = True,
 ) -> Generator:
     """
@@ -27,8 +27,10 @@ def filter_emails(
                       - A single string (substring match, case-insensitive)
                       - A list of strings (match if ANY sender matches)
                       - None (no sender filtering)
-        keyword: Optional keyword to search for in Subject and Body
-                 (case-insensitive). If None, no keyword filtering is applied.
+        keyword: Optional keyword filter. Can be:
+                 - A single string (match in subject or body, case-insensitive)
+                 - A list of strings (match if ANY keyword found in subject or body)
+                 - None (no keyword filtering)
         require_attachments: If True, only yield emails that have at
                             least one attachment.
 
@@ -42,6 +44,14 @@ def filter_emails(
         sender_list = [sender_email]
     else:
         sender_list = list(sender_email)
+
+    # Normalize keyword to a list for uniform handling
+    if keyword is None:
+        keyword_list = None
+    elif isinstance(keyword, str):
+        keyword_list = [keyword]
+    else:
+        keyword_list = list(keyword)
 
     for email in inbox.Items:
         try:
@@ -57,9 +67,11 @@ def filter_emails(
             if not any(s.lower() in sender_lower for s in sender_list):
                 continue
 
-        # Keyword match (if specified)
-        if keyword:
-            if keyword.lower() not in subject.lower() and keyword.lower() not in body.lower():
+        # Keyword match (if specified) — match if ANY keyword in subject or body
+        if keyword_list:
+            subject_lower = subject.lower()
+            body_lower = body.lower()
+            if not any(k.lower() in subject_lower or k.lower() in body_lower for k in keyword_list):
                 continue
 
         # Attachment requirement
@@ -72,7 +84,7 @@ def filter_emails(
 def filter_emails_by_sender_and_keyword(
     inbox,
     sender_email: Union[str, List[str]],
-    keyword: Optional[str] = None,
+    keyword: Optional[Union[str, List[str]]] = None,
     require_attachments: bool = True,
 ) -> Generator:
     """
@@ -84,8 +96,8 @@ def filter_emails_by_sender_and_keyword(
         inbox: Outlook folder COM object (e.g. Inbox) to iterate.
         sender_email: Substring (or list of substrings) to match against
                       SenderEmailAddress (case-insensitive).
-        keyword: Optional keyword to search for in Subject and Body.
-                 If None, no keyword filtering is applied.
+        keyword: Optional keyword (or list of keywords) to search for in
+                 Subject and Body. If None, no keyword filtering is applied.
         require_attachments: If True, only yield emails that have at
                             least one attachment.
 
@@ -97,17 +109,17 @@ def filter_emails_by_sender_and_keyword(
 
 def filter_emails_by_keyword(
     inbox,
-    keyword: str,
+    keyword: Union[str, List[str]],
     require_attachments: bool = True,
 ) -> Generator:
     """
-    Yield emails containing a keyword in subject or body.
+    Yield emails containing a keyword (or any of a list) in subject or body.
 
     This is a convenience wrapper around :func:`filter_emails`.
 
     Args:
         inbox: Outlook folder COM object (e.g. Inbox) to iterate.
-        keyword: Keyword to search for in Subject and Body.
+        keyword: Keyword or list of keywords to search for in Subject and Body.
         require_attachments: If True, only yield emails that have at
                             least one attachment.
 
