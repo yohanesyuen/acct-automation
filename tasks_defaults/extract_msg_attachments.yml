@@ -1,0 +1,17 @@
+# Extract attachments from raw .msg files into Emails_With_Attachments.
+# Copy to tasks/ and customize for your environment.
+
+root: "C:\\path\\to\\output"
+
+# Source subfolder containing .msg files (under root)
+source_subdir: "Raw_Emails"
+
+# Destination subfolder for extracted attachments (under root)
+dest_subdir: "Emails_With_Attachments"
+
+# File type filter — list of extensions to extract (e.g. [".xlsx", ".pdf"])
+# Leave as empty list to extract all attachments
+file_types: []
+
+# Report filename (placed under root)
+report_file: "Msg_Attachments_Report.csv"
