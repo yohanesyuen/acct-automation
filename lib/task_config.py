@@ -115,6 +115,12 @@ def parse_task_args(
         if isinstance(default_val, bool):
             parser.add_argument(flag, default=None, action="store_true",
                                 help=f"Override '{key}' (default from YAML: {default_val}).")
+        elif isinstance(default_val, list):
+            # List values: accept comma-separated string from CLI
+            display_val = ", ".join(str(v) for v in default_val)
+            parser.add_argument(flag, default=None, type=str,
+                                help=f"Override '{key}' as comma-separated values "
+                                     f"(default from YAML: [{display_val}]).")
         else:
             parser.add_argument(flag, default=None, type=str,
                                 help=f"Override '{key}' (default from YAML: {default_val}).")
@@ -125,7 +131,12 @@ def parse_task_args(
     for key in all_keys:
         cli_value = getattr(args, key, None)
         if cli_value is not None:
-            config[key] = cli_value
+            yaml_val = config.get(key)
+            # If the YAML value is a list, split the CLI string by comma
+            if isinstance(yaml_val, list):
+                config[key] = [v.strip() for v in cli_value.split(",")]
+            else:
+                config[key] = cli_value
 
     return config
 

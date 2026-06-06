@@ -5,12 +5,12 @@ Provides generator-based filters that yield matching email items from
 an Outlook folder based on sender address, keyword, and attachment criteria.
 """
 
-from typing import Generator, Optional
+from typing import Generator, List, Optional, Union
 
 
 def filter_emails(
     inbox,
-    sender_email: Optional[str] = None,
+    sender_email: Optional[Union[str, List[str]]] = None,
     keyword: Optional[str] = None,
     require_attachments: bool = True,
 ) -> Generator:
@@ -23,8 +23,10 @@ def filter_emails(
 
     Args:
         inbox: Outlook folder COM object (e.g. Inbox) to iterate.
-        sender_email: Optional substring to match against SenderEmailAddress
-                      (case-insensitive). If None, sender is not filtered.
+        sender_email: Optional sender filter. Can be:
+                      - A single string (substring match, case-insensitive)
+                      - A list of strings (match if ANY sender matches)
+                      - None (no sender filtering)
         keyword: Optional keyword to search for in Subject and Body
                  (case-insensitive). If None, no keyword filtering is applied.
         require_attachments: If True, only yield emails that have at
@@ -33,6 +35,14 @@ def filter_emails(
     Yields:
         Outlook MailItem COM objects that match all criteria.
     """
+    # Normalize sender_email to a list for uniform handling
+    if sender_email is None:
+        sender_list = None
+    elif isinstance(sender_email, str):
+        sender_list = [sender_email]
+    else:
+        sender_list = list(sender_email)
+
     for email in inbox.Items:
         try:
             sender = email.SenderEmailAddress or ""
@@ -41,9 +51,11 @@ def filter_emails(
         except Exception:
             continue
 
-        # Sender match (if specified)
-        if sender_email and sender_email.lower() not in sender.lower():
-            continue
+        # Sender match (if specified) — match if ANY entry is a substring
+        if sender_list:
+            sender_lower = sender.lower()
+            if not any(s.lower() in sender_lower for s in sender_list):
+                continue
 
         # Keyword match (if specified)
         if keyword:
@@ -59,19 +71,19 @@ def filter_emails(
 
 def filter_emails_by_sender_and_keyword(
     inbox,
-    sender_email: str,
+    sender_email: Union[str, List[str]],
     keyword: Optional[str] = None,
     require_attachments: bool = True,
 ) -> Generator:
     """
-    Yield emails matching a sender address and optional keyword filter.
+    Yield emails matching a sender address (or list) and optional keyword filter.
 
     This is a convenience wrapper around :func:`filter_emails`.
 
     Args:
         inbox: Outlook folder COM object (e.g. Inbox) to iterate.
-        sender_email: Substring to match against SenderEmailAddress
-                      (case-insensitive).
+        sender_email: Substring (or list of substrings) to match against
+                      SenderEmailAddress (case-insensitive).
         keyword: Optional keyword to search for in Subject and Body.
                  If None, no keyword filtering is applied.
         require_attachments: If True, only yield emails that have at
