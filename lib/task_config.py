@@ -1,0 +1,164 @@
+"""
+Task configuration loader.
+
+Reads a YAML file with a ``root`` key defining the base output directory.
+All other paths in a task are constructed relative to this root.
+
+Also provides CLI argument parsing that allows config values to be
+overridden from the command line.
+"""
+
+import argparse
+import os
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+
+import yaml
+
+
+def load_task_config(task_name: str, config_dir: str = None) -> Dict[str, Any]:
+    """
+    Load a task configuration YAML file.
+
+    Looks for ``<task_name>.yml`` in the config directory (defaults to a
+    ``tasks/`` folder next to this package). The YAML must contain at
+    minimum a ``root`` key specifying the base output directory.
+
+    Args:
+        task_name: Name of the task (without .yml extension).
+        config_dir: Optional path to the directory containing task YAML
+                    files. Defaults to ``<project_root>/tasks/``.
+
+    Returns:
+        Dictionary with all keys from the YAML file.
+
+    Raises:
+        FileNotFoundError: If the YAML file does not exist.
+        ValueError: If the YAML file is missing the required ``root`` key.
+    """
+    if config_dir is None:
+        # Default to <project_root>/tasks/
+        project_root = Path(__file__).resolve().parent.parent
+        config_dir = str(project_root / "tasks")
+
+    config_path = os.path.join(config_dir, f"{task_name}.yml")
+
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(
+            f"Task config not found: {config_path}"
+        )
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    if not config or "root" not in config:
+        raise ValueError(
+            f"Task config '{config_path}' must contain a 'root' key."
+        )
+
+    return config
+
+
+def parse_task_args(
+    description: str,
+    default_task: str,
+    config_keys: Optional[List[str]] = None,
+    argv: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Parse CLI arguments and return a merged task config dictionary.
+
+    Builds an argparse parser with:
+    - ``--task``: which task YAML to load (default provided by caller).
+    - One ``--<key>`` flag for each config key specified in ``config_keys``.
+
+    CLI arguments override values from the YAML file. Keys use underscores
+    internally but accept hyphens on the command line (e.g. ``--sender-email``
+    maps to config key ``sender_email``).
+
+    Args:
+        description: Script description shown in ``--help``.
+        default_task: Default task config name if ``--task`` is not provided.
+        config_keys: List of config keys to expose as CLI flags. If None,
+                     the keys are inferred from the YAML file after loading.
+        argv: Optional argument list (defaults to sys.argv[1:]).
+
+    Returns:
+        Merged config dictionary (YAML values overridden by CLI values).
+    """
+    # First pass: parse just --task so we can load the YAML and discover keys
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--task", default=default_task)
+    pre_args, remaining = pre_parser.parse_known_args(argv)
+
+    config = load_task_config(pre_args.task)
+
+    # Determine which keys to expose as CLI flags
+    if config_keys is None:
+        config_keys = [k for k in config.keys() if k != "root"]
+
+    # Always include root
+    all_keys = ["root"] + [k for k in config_keys if k != "root"]
+
+    # Build the full parser
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument(
+        "--task",
+        default=default_task,
+        help=f"Task config name to load from tasks/ (default: {default_task}).",
+    )
+
+    for key in all_keys:
+        flag = f"--{key.replace('_', '-')}"
+        default_val = config.get(key)
+        # Infer type from the YAML value
+        if isinstance(default_val, bool):
+            parser.add_argument(flag, default=None, action="store_true",
+                                help=f"Override '{key}' (default from YAML: {default_val}).")
+        else:
+            parser.add_argument(flag, default=None, type=str,
+                                help=f"Override '{key}' (default from YAML: {default_val}).")
+
+    args = parser.parse_args(argv)
+
+    # Merge: CLI overrides take precedence over YAML values
+    for key in all_keys:
+        cli_value = getattr(args, key, None)
+        if cli_value is not None:
+            config[key] = cli_value
+
+    return config
+
+
+def get_output_dir(config: Dict[str, Any], *subdirs: str) -> str:
+    """
+    Construct an output directory path from the task root and subdirectories.
+
+    Creates the directory on disk if it does not already exist.
+
+    Args:
+        config: Task configuration dictionary (must have a ``root`` key).
+        *subdirs: Zero or more subdirectory names to append to root.
+
+    Returns:
+        Absolute path to the (now-existing) output directory.
+    """
+    path = os.path.join(config["root"], *subdirs)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def get_report_path(config: Dict[str, Any], filename: str) -> str:
+    """
+    Construct a report file path under the task root.
+
+    Args:
+        config: Task configuration dictionary (must have a ``root`` key).
+        filename: Report filename (e.g. ``GRN_Report.csv``).
+
+    Returns:
+        Absolute path for the report file (parent directory is ensured to exist).
+    """
+    path = os.path.join(config["root"], filename)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return path

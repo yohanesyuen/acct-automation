@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Generated output
+pre_prompt.md
+
+# Extracted data (task output — don't commit user data)
+Excel_Files/
+Attachments/
+Emails/
+*.msg
+*.csv
+
+# Logs
+*.log
