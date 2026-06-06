@@ -1,4 +1,4 @@
-from .connection import get_outlook_inbox
+from .connection import get_outlook_inbox, get_outlook_sent_items, get_outlook_folder
 from .email_filter import filter_emails, filter_emails_by_sender_and_keyword, filter_emails_by_keyword
 from .attachments import (
     AttachmentInfo,
@@ -10,6 +10,8 @@ from .attachments import (
 
 __all__ = [
     "get_outlook_inbox",
+    "get_outlook_sent_items",
+    "get_outlook_folder",
     "filter_emails",
     "filter_emails_by_sender_and_keyword",
     "filter_emails_by_keyword",

@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib.outlook import (
     get_outlook_inbox,
+    get_outlook_folder,
     filter_emails,
     iter_attachments,
     save_attachment,
@@ -46,7 +47,7 @@ def extract_attachments(config):
     else:
         keyword_list = list(keyword)
 
-    inbox = get_outlook_inbox()
+    inbox = get_outlook_folder(config.get("folder", "inbox"))
     # Filter by sender only — keyword check includes body + attachment filenames
     emails = filter_emails(inbox, sender_email=sender_email, keyword=None, verbose=True)
 

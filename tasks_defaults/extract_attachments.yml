@@ -1,7 +1,10 @@
-# Extract all attachments from emails matching sender address(es).
+# Extract attachments from emails matching sender address(es) and keyword criteria.
 # Copy to tasks/ and customize for your environment.
 
 root: "C:\\path\\to\\output"
+
+# Outlook folder to search: "inbox" or "sent" (default: inbox)
+folder: "inbox"
 
 sender_email:
   - "sender@example.com"
