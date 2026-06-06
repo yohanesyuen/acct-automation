@@ -13,6 +13,10 @@ sender_email:
 # Leave as empty list to disable keyword filtering
 keyword: []
 
+# File type filter — list of extensions to save (e.g. [".xlsx", ".pdf"])
+# Leave as empty list to save all file types
+file_types: []
+
 # Subdirectories (constructed from root)
 attachments_subdir: "Attachments"
 

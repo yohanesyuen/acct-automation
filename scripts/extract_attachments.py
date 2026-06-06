@@ -36,6 +36,7 @@ from lib.utils import sanitize_filename
 def extract_attachments(config):
     sender_email = config.get("sender_email")
     keyword = config.get("keyword")
+    file_types = config.get("file_types")
     output_folder = get_output_dir(config, config.get("attachments_subdir", "Attachments"))
     report_path = get_report_path(config, config.get("report_file", "Attachments_Report.csv"))
 
@@ -47,6 +48,16 @@ def extract_attachments(config):
     else:
         keyword_list = list(keyword)
 
+    # Normalize file_types to a list of lowercase extensions with dots
+    if file_types is None or file_types == []:
+        ext_filter = None
+    elif isinstance(file_types, str):
+        ext_filter = [file_types if file_types.startswith(".") else f".{file_types}"]
+    else:
+        ext_filter = [ft if ft.startswith(".") else f".{ft}" for ft in file_types]
+    if ext_filter:
+        ext_filter = [e.lower() for e in ext_filter]
+
     inbox = get_outlook_folder(config.get("folder", "inbox"))
     # Filter by sender only — keyword check includes body + attachment filenames
     emails = filter_emails(inbox, sender_email=sender_email, keyword=None, verbose=True)
@@ -55,6 +66,8 @@ def extract_attachments(config):
     print(f"Extracting attachments from: {', '.join(senders_display)}")
     if keyword_list:
         print(f"  Keyword filter (body or filename): {keyword_list}")
+    if ext_filter:
+        print(f"  File type filter: {ext_filter}")
     print(f"  Output: {output_folder}\n")
 
     report = []
@@ -99,6 +112,13 @@ def extract_attachments(config):
                 continue
 
         new_filename = info.filename
+
+        # File type filter — skip attachments that don't match
+        if ext_filter:
+            file_ext = os.path.splitext(new_filename)[1].lower()
+            if file_ext not in ext_filter:
+                continue
+
         # Create per-email subfolder: <sanitized_subject>_<YYYYMMDD_HHMMSS>/
         safe_subject = sanitize_filename(info.email_subject)
         date_str = info.received_time.strftime("%Y%m%d_%H%M%S")
