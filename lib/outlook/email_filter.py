@@ -13,6 +13,7 @@ def filter_emails(
     sender_email: Optional[Union[str, List[str]]] = None,
     keyword: Optional[Union[str, List[str]]] = None,
     require_attachments: bool = True,
+    verbose: bool = False,
 ) -> Generator:
     """
     Yield emails matching optional sender address and keyword filters.
@@ -33,6 +34,7 @@ def filter_emails(
                  - None (no keyword filtering)
         require_attachments: If True, only yield emails that have at
                             least one attachment.
+        verbose: If True, print diagnostic info about filter decisions.
 
     Yields:
         Outlook MailItem COM objects that match all criteria.
@@ -53,6 +55,12 @@ def filter_emails(
     else:
         keyword_list = list(keyword) if keyword else None
 
+    total_scanned = 0
+    sender_matched = 0
+    keyword_matched = 0
+    attachment_filtered = 0
+    yielded = 0
+
     for email in inbox.Items:
         try:
             sender = email.SenderEmailAddress or ""
@@ -61,24 +69,44 @@ def filter_emails(
         except Exception:
             continue
 
+        total_scanned += 1
+
         # Sender match (if specified) — match if ANY entry is a substring
         if sender_list:
             sender_lower = sender.lower()
             if not any(s.lower() in sender_lower for s in sender_list):
+                if verbose and total_scanned <= 5:
+                    print(f"  [filter] SKIP sender mismatch: {sender[:60]}")
                 continue
+            sender_matched += 1
 
         # Keyword match (if specified) — match if ANY keyword in subject or body
         if keyword_list:
             subject_lower = subject.lower()
             body_lower = body.lower()
             if not any(k.lower() in subject_lower or k.lower() in body_lower for k in keyword_list):
+                if verbose:
+                    print(f"  [filter] SKIP keyword mismatch: \"{subject[:50]}\" (sender: {sender[:40]})")
                 continue
+            keyword_matched += 1
 
         # Attachment requirement
         if require_attachments and email.Attachments.Count == 0:
+            attachment_filtered += 1
+            if verbose:
+                print(f"  [filter] SKIP no attachments: \"{subject[:50]}\"")
             continue
 
+        yielded += 1
+        if verbose and yielded <= 10:
+            print(f"  [filter] MATCH: \"{subject[:50]}\" (sender: {sender[:40]}, "
+                  f"attachments: {email.Attachments.Count})")
         yield email
+
+    if verbose:
+        print(f"\n  [filter] Summary: scanned={total_scanned}, sender_match={sender_matched}, "
+              f"keyword_match={keyword_matched}, no_attachments_skipped={attachment_filtered}, "
+              f"yielded={yielded}")
 
 
 def filter_emails_by_sender_and_keyword(

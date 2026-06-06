@@ -48,7 +48,7 @@ def extract_attachments(config):
 
     inbox = get_outlook_inbox()
     # Filter by sender only — keyword check includes body + attachment filenames
-    emails = filter_emails(inbox, sender_email=sender_email, keyword=None)
+    emails = filter_emails(inbox, sender_email=sender_email, keyword=None, verbose=True)
 
     senders_display = sender_email if isinstance(sender_email, list) else [sender_email or "all"]
     print(f"Extracting attachments from: {', '.join(senders_display)}")
@@ -57,6 +57,9 @@ def extract_attachments(config):
     print(f"  Output: {output_folder}\n")
 
     report = []
+    emails_checked = 0
+    keyword_body_matches = 0
+    keyword_filename_matches = 0
 
     for info in iter_attachments(emails):
         # If keywords specified, the email must match:
@@ -80,9 +83,18 @@ def extract_attachments(config):
                             filename_match = True
                             break
 
-                if not body_match and not filename_match:
+                if body_match:
+                    keyword_body_matches += 1
+                elif filename_match:
+                    keyword_filename_matches += 1
+                else:
+                    emails_checked += 1
+                    if emails_checked <= 5:
+                        print(f"  [keyword] SKIP: \"{(parent_email.Subject or '')[:50]}\" "
+                              f"(attachments: {', '.join(a.FileName for a in parent_email.Attachments)})")
                     continue
-            except Exception:
+            except Exception as e:
+                print(f"  [keyword] ERROR checking email: {e}")
                 continue
 
         new_filename = make_date_prefixed_filename(info.received_time, info.filename)
@@ -105,6 +117,11 @@ def extract_attachments(config):
 
     if write_csv_report(report_path, report):
         print(f"\nReport saved to: {report_path}")
+
+    if keyword_list:
+        print(f"\n  [keyword] Summary: body/subject matches={keyword_body_matches}, "
+              f"filename matches={keyword_filename_matches}, "
+              f"no match skipped={emails_checked}")
 
     print(f"\nDone. {len(report)} attachment(s) saved to {output_folder}")
 
