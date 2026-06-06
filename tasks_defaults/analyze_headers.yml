@@ -1,0 +1,15 @@
+# Analyze Excel files for column headers matching a substring.
+# Copy to tasks/ and customize for your environment.
+
+root: "C:\\path\\to\\output"
+
+# Substring(s) to search for in column headers (case-insensitive)
+# Supports a single string or a list
+search_term:
+  - "GR"
+
+# Directory containing Excel files to scan (under root)
+source_subdir: "Excel_Files"
+
+# Report filename (placed under root)
+report_file: "Header_Analysis_Report.csv"
