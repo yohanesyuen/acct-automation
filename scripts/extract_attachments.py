@@ -1,10 +1,12 @@
 """
-Extract attachments from emails matching sender addresses, filtered by filename keyword.
+Extract attachments from emails matching sender addresses and keyword criteria.
 
-Filters emails by sender, then checks if any attachment in the email has a
-filename containing one of the keywords (case-insensitive). If a match is
-found, ALL attachments from that email are saved.
+An email passes the filter if:
+  - It is from any of the specified senders, AND
+  - (the body/subject contains any keyword OR any attachment filename contains any keyword)
+
 If no keywords are specified, all attachments from matching senders are saved.
+All attachments from a matching email are saved.
 
 Usage:
     python scripts/extract_attachments.py
@@ -45,31 +47,40 @@ def extract_attachments(config):
         keyword_list = list(keyword)
 
     inbox = get_outlook_inbox()
-    # Filter by sender only — keyword is matched against attachment filenames below
+    # Filter by sender only — keyword check includes body + attachment filenames
     emails = filter_emails(inbox, sender_email=sender_email, keyword=None)
 
     senders_display = sender_email if isinstance(sender_email, list) else [sender_email or "all"]
     print(f"Extracting attachments from: {', '.join(senders_display)}")
     if keyword_list:
-        print(f"  Filename keyword filter: {keyword_list}")
+        print(f"  Keyword filter (body or filename): {keyword_list}")
     print(f"  Output: {output_folder}\n")
 
     report = []
 
     for info in iter_attachments(emails):
-        # If keywords specified, check if THIS email has any attachment
-        # with a matching filename. We do this per-attachment but need to
-        # check all siblings. Access the parent email's attachments list.
+        # If keywords specified, the email must match:
+        #   body/subject contains any keyword OR any attachment filename contains any keyword
         if keyword_list:
             try:
                 parent_email = info.attachment_ref.Parent
-                has_match = False
-                for i in range(1, parent_email.Attachments.Count + 1):
-                    att_name = parent_email.Attachments.Item(i).FileName.lower()
-                    if any(k.lower() in att_name for k in keyword_list):
-                        has_match = True
-                        break
-                if not has_match:
+                subject_lower = (parent_email.Subject or "").lower()
+                body_lower = (parent_email.Body or "").lower()
+
+                # Check body/subject
+                body_match = any(k.lower() in subject_lower or k.lower() in body_lower
+                                 for k in keyword_list)
+
+                # Check attachment filenames
+                filename_match = False
+                if not body_match:
+                    for i in range(1, parent_email.Attachments.Count + 1):
+                        att_name = parent_email.Attachments.Item(i).FileName.lower()
+                        if any(k.lower() in att_name for k in keyword_list):
+                            filename_match = True
+                            break
+
+                if not body_match and not filename_match:
                     continue
             except Exception:
                 continue
