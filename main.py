@@ -259,6 +259,62 @@ def cmd_run(args):
 
 
 # ---------------------------------------------------------------------------
+# Git operations
+# ---------------------------------------------------------------------------
+
+def cmd_commit(args):
+    """Stage all changes and commit with a summary + file list."""
+    from lib.git_ops import get_repo, stage_all, commit, get_changed_files
+
+    repo = get_repo()
+
+    # Check for changes
+    changed = get_changed_files(repo)
+    if not changed:
+        print("Nothing to commit — working tree is clean.")
+        return
+
+    # Stage all changes
+    stage_all(repo)
+
+    # Get or prompt for summary
+    summary = args.message
+    if not summary:
+        print("Changed files:")
+        for f in changed:
+            print(f"  - {f}")
+        print()
+        summary = input("Commit summary (max 80 chars): ").strip()
+        if not summary:
+            print("Aborted — no summary provided.")
+            sys.exit(1)
+
+    if len(summary) > 80:
+        print(f"Warning: summary truncated to 80 chars.")
+        summary = summary[:80]
+
+    sha = commit(repo, summary)
+    print(f"Committed: {sha[:8]} {summary}")
+
+
+def cmd_push(args):
+    """Push the current branch to remote."""
+    from lib.git_ops import get_repo, push
+
+    repo = get_repo()
+    remote = args.remote or "origin"
+    branch = args.branch or repo.head.shorthand
+
+    print(f"Pushing {branch} to {remote}...")
+    try:
+        push(repo, remote_name=remote, branch=branch)
+        print("Done.")
+    except Exception as e:
+        print(f"Push failed: {e}")
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # CLI (argparse)
 # ---------------------------------------------------------------------------
 
@@ -300,6 +356,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Additional arguments passed through to the script.",
     )
     sp_run.set_defaults(func=cmd_run)
+
+    # commit
+    sp_commit = subparsers.add_parser(
+        "commit",
+        help="Stage all changes and commit with a summary + auto-generated file list.",
+    )
+    sp_commit.add_argument(
+        "-m", "--message",
+        default=None,
+        help="Commit summary (max 80 chars). If omitted, will prompt interactively.",
+    )
+    sp_commit.set_defaults(func=cmd_commit)
+
+    # push
+    sp_push = subparsers.add_parser(
+        "push",
+        help="Push the current branch to a remote.",
+    )
+    sp_push.add_argument(
+        "--remote",
+        default=None,
+        help="Remote name (default: origin).",
+    )
+    sp_push.add_argument(
+        "--branch",
+        default=None,
+        help="Branch to push (default: current branch).",
+    )
+    sp_push.set_defaults(func=cmd_push)
 
     return parser
 
