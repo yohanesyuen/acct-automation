@@ -32,3 +32,6 @@ Emails/
 
 # Logs
 *.log
+
+# Secrets
+.env

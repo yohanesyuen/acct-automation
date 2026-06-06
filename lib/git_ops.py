@@ -124,9 +124,45 @@ def commit(repo: pygit2.Repository, summary: str) -> str:
     return str(oid)
 
 
+def _load_github_pat() -> Optional[str]:
+    """
+    Load GITHUB_PAT from environment or .env file at project root.
+
+    Returns:
+        The token string, or None if not found.
+    """
+    import os
+
+    # Check environment first
+    pat = os.environ.get("GITHUB_PAT")
+    if pat:
+        return pat
+
+    # Try loading from .env file
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key == "GITHUB_PAT":
+                    return value
+        except Exception:
+            pass
+
+    return None
+
+
 def push(repo: pygit2.Repository, remote_name: str = "origin", branch: Optional[str] = None) -> None:
     """
     Push the current branch to a remote.
+
+    Uses GITHUB_PAT from the environment or .env file for HTTPS
+    authentication if available.
 
     Args:
         repo: The pygit2 Repository object.
@@ -146,6 +182,13 @@ def push(repo: pygit2.Repository, remote_name: str = "origin", branch: Optional[
 
     refspec = f"refs/heads/{branch}:refs/heads/{branch}"
 
-    # Use callbacks for credential handling (SSH agent or default)
-    callbacks = pygit2.RemoteCallbacks()
+    # Build credentials callback using PAT if available
+    pat = _load_github_pat()
+    if pat:
+        callbacks = pygit2.RemoteCallbacks(
+            credentials=pygit2.UserPass("x-access-token", pat)
+        )
+    else:
+        callbacks = pygit2.RemoteCallbacks()
+
     remote.push([refspec], callbacks=callbacks)
