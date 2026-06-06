@@ -41,17 +41,17 @@ def filter_emails(
     if sender_email is None:
         sender_list = None
     elif isinstance(sender_email, str):
-        sender_list = [sender_email]
+        sender_list = [sender_email] if sender_email else None
     else:
-        sender_list = list(sender_email)
+        sender_list = list(sender_email) if sender_email else None
 
     # Normalize keyword to a list for uniform handling
     if keyword is None:
         keyword_list = None
     elif isinstance(keyword, str):
-        keyword_list = [keyword]
+        keyword_list = [keyword] if keyword else None
     else:
-        keyword_list = list(keyword)
+        keyword_list = list(keyword) if keyword else None
 
     for email in inbox.Items:
         try:

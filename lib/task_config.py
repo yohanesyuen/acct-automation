@@ -131,12 +131,16 @@ def parse_task_args(
     for key in all_keys:
         cli_value = getattr(args, key, None)
         if cli_value is not None:
-            yaml_val = config.get(key)
-            # If the YAML value is a list, split the CLI string by comma
-            if isinstance(yaml_val, list):
+            # If the CLI value contains commas, treat as a list
+            if "," in cli_value:
                 config[key] = [v.strip() for v in cli_value.split(",")]
             else:
-                config[key] = cli_value
+                yaml_val = config.get(key)
+                # If YAML defined it as a list, wrap single CLI value in a list
+                if isinstance(yaml_val, list):
+                    config[key] = [cli_value.strip()]
+                else:
+                    config[key] = cli_value
 
     return config
 
