@@ -1,13 +1,14 @@
 """
-Extract all attachments from emails matching a list of sender addresses.
+Extract attachments from emails matching sender addresses, filtered by filename keyword.
 
-Saves attachments to an Attachments subfolder under the task root,
-organized by sender and date.
+Filters emails by sender, then saves only attachments whose filename
+contains any of the specified keywords (case-insensitive).
+If no keywords are specified, all attachments are saved.
 
 Usage:
     python scripts/extract_attachments.py
     python scripts/extract_attachments.py --sender-email "alice@example.com,bob@example.com"
-    python scripts/extract_attachments.py --keyword Invoice
+    python scripts/extract_attachments.py --keyword "GRN,Invoice"
 """
 
 import os
@@ -34,18 +35,33 @@ def extract_attachments(config):
     output_folder = get_output_dir(config, config.get("attachments_subdir", "Attachments"))
     report_path = get_report_path(config, config.get("report_file", "Attachments_Report.csv"))
 
-    inbox = get_outlook_inbox()
-    emails = filter_emails(inbox, sender_email=sender_email, keyword=keyword)
+    # Normalize keyword to a list
+    if keyword is None or keyword == []:
+        keyword_list = None
+    elif isinstance(keyword, str):
+        keyword_list = [keyword]
+    else:
+        keyword_list = list(keyword)
 
-    senders_display = sender_email if isinstance(sender_email, list) else [sender_email]
+    inbox = get_outlook_inbox()
+    # Filter by sender only — keyword matching is done on attachment filenames
+    emails = filter_emails(inbox, sender_email=sender_email, keyword=None)
+
+    senders_display = sender_email if isinstance(sender_email, list) else [sender_email or "all"]
     print(f"Extracting attachments from: {', '.join(senders_display)}")
-    if keyword:
-        print(f"  Keyword filter: {keyword}")
+    if keyword_list:
+        print(f"  Filename keyword filter: {keyword_list}")
     print(f"  Output: {output_folder}\n")
 
     report = []
 
     for info in iter_attachments(emails):
+        # If keywords specified, only save attachments whose filename matches
+        if keyword_list:
+            filename_lower = info.filename.lower()
+            if not any(k.lower() in filename_lower for k in keyword_list):
+                continue
+
         new_filename = make_date_prefixed_filename(info.received_time, info.filename)
         dest_path = os.path.join(output_folder, new_filename)
 
