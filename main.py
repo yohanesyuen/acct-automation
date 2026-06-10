@@ -259,50 +259,6 @@ def cmd_run(args):
 
 
 # ---------------------------------------------------------------------------
-# Task init
-# ---------------------------------------------------------------------------
-
-TASKS_DEFAULTS_DIR = PROJECT_ROOT / "tasks_defaults"
-TASKS_DIR = PROJECT_ROOT / "tasks"
-
-
-def cmd_init(args):
-    """Copy default task configs into tasks/ if they don't already exist."""
-    import shutil
-
-    if not TASKS_DEFAULTS_DIR.exists():
-        print("Error: tasks_defaults/ directory not found.")
-        sys.exit(1)
-
-    TASKS_DIR.mkdir(exist_ok=True)
-
-    created = []
-    skipped = []
-
-    for default_file in sorted(TASKS_DEFAULTS_DIR.glob("*.yml")):
-        dest = TASKS_DIR / default_file.name
-        if dest.exists() and not args.force:
-            skipped.append(default_file.name)
-        else:
-            shutil.copy2(default_file, dest)
-            created.append(default_file.name)
-
-    if created:
-        print("Created task configs:")
-        for f in created:
-            print(f"  tasks/{f}")
-
-    if skipped:
-        print(f"\nSkipped (already exist): {', '.join(skipped)}")
-        print("  Use --force to overwrite.")
-
-    if not created and not skipped:
-        print("No default configs found in tasks_defaults/.")
-    elif created:
-        print(f"\nEdit the files in tasks/ to configure for your environment.")
-
-
-# ---------------------------------------------------------------------------
 # Git operations
 # ---------------------------------------------------------------------------
 
@@ -375,19 +331,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Regenerate pre_prompt.md from template and lib/ introspection.",
     )
     sp_generate.set_defaults(func=cmd_generate)
-
-    # init
-    sp_init = subparsers.add_parser(
-        "init",
-        help="Create default task configs in tasks/ from templates.",
-    )
-    sp_init.add_argument(
-        "--force",
-        action="store_true",
-        default=False,
-        help="Overwrite existing task configs.",
-    )
-    sp_init.set_defaults(func=cmd_init)
 
     # list
     sp_list = subparsers.add_parser(

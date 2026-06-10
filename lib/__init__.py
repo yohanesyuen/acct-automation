@@ -6,7 +6,7 @@ from .utils import (
     make_date_prefixed_filename,
     EXCEL_EXTENSIONS,
 )
-from .task_config import load_task_config, parse_task_args, unpack_config, get_output_dir, get_report_path
+from .task_config import load_task_config, save_task_config, parse_task_args, unpack_config, get_output_dir, get_report_path
 
 __all__ = [
     "sanitize_filename",
@@ -16,6 +16,7 @@ __all__ = [
     "make_date_prefixed_filename",
     "EXCEL_EXTENSIONS",
     "load_task_config",
+    "save_task_config",
     "parse_task_args",
     "unpack_config",
     "get_output_dir",
