@@ -400,9 +400,9 @@ def main():
         if selected is None:
             print("No task selected.")
             sys.exit(0)
-        # Run the selected script with --gui flag
+        # Run the selected script (GUI opens automatically with no args)
         script_path = SCRIPTS_DIR / f"{selected}.py"
-        cmd = [sys.executable, str(script_path), "--gui"]
+        cmd = [sys.executable, str(script_path)]
         result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
         sys.exit(result.returncode)
     else:
