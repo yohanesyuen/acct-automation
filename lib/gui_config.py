@@ -177,11 +177,23 @@ def gui_select_task() -> Optional[str]:
         try:
             from lib.git_ops import get_repo, pull as git_pull
             repo = get_repo()
-            updated = git_pull(repo)
-            if updated:
-                messagebox.showinfo("Pull Complete", "Updated to latest version.\nThe app will now restart.")
+            pull_result = git_pull(repo)
+            if pull_result["updated"]:
+                # If pre_prompt_template.md changed, regenerate pre_prompt.md
+                if any("pre_prompt_template.md" in f for f in pull_result["changed_files"]):
+                    try:
+                        from main import generate_pre_prompt, OUTPUT_PATH
+                        content = generate_pre_prompt()
+                        OUTPUT_PATH.write_text(content, encoding="utf-8")
+                        messagebox.showinfo(
+                            "Pull Complete",
+                            "Updated to latest version.\npre_prompt.md regenerated.\nThe app will now restart."
+                        )
+                    except Exception:
+                        messagebox.showinfo("Pull Complete", "Updated to latest version.\nThe app will now restart.")
+                else:
+                    messagebox.showinfo("Pull Complete", "Updated to latest version.\nThe app will now restart.")
                 root.destroy()
-                # Re-launch by returning a special sentinel
                 result["selected"] = "__restart__"
             else:
                 messagebox.showinfo("Pull", "Already up to date.")

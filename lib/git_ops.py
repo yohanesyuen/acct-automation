@@ -266,7 +266,7 @@ def stash_pop(repo: pygit2.Repository) -> bool:
         return False
 
 
-def pull(repo: pygit2.Repository, remote_name: str = "origin") -> bool:
+def pull(repo: pygit2.Repository, remote_name: str = "origin") -> dict:
     """
     Pull (fetch + fast-forward merge) from the remote tracking branch.
 
@@ -278,12 +278,11 @@ def pull(repo: pygit2.Repository, remote_name: str = "origin") -> bool:
         remote_name: Name of the remote (default: "origin").
 
     Returns:
-        True if the pull updated the branch, False if already up-to-date.
-
-    Raises:
-        Note: if stash pop fails after pull, local changes are discarded
-        to ensure the working directory matches the pulled version.
+        Dict with keys:
+          - "updated": True if branch was updated
+          - "changed_files": list of file paths changed in the pull
     """
+    result = {"updated": False, "changed_files": []}
     branch = repo.head.shorthand
 
     # Stash if needed
@@ -300,11 +299,18 @@ def pull(repo: pygit2.Repository, remote_name: str = "origin") -> bool:
         try:
             remote_oid = repo.references[remote_ref].target
         except KeyError:
-            return False
+            return result
 
         local_oid = repo.head.target
         if local_oid == remote_oid:
-            return False
+            return result
+
+        # Determine which files changed between local and remote
+        try:
+            diff = repo.diff(repo.get(local_oid), repo.get(remote_oid))
+            result["changed_files"] = [patch.delta.new_file.path for patch in diff]
+        except Exception:
+            pass
 
         # Fast-forward merge
         repo.checkout_tree(repo.get(remote_oid))
@@ -313,7 +319,8 @@ def pull(repo: pygit2.Repository, remote_name: str = "origin") -> bool:
             ref.set_target(remote_oid)
         repo.head.set_target(remote_oid)
 
-        return True
+        result["updated"] = True
+        return result
     finally:
         # Pop stash if we stashed — if it fails, discard local changes
         if had_changes:
