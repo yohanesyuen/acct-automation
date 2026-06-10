@@ -78,14 +78,8 @@ def parse_task_args(
     """
     Parse CLI arguments and return a merged task config dictionary.
 
-    Builds an argparse parser with:
-    - ``--task``: which task YAML to load (default provided by caller).
-    - ``--gui``: open a tkinter form instead of using CLI args.
-    - One ``--<key>`` flag for each config key specified in ``config_keys``.
-
-    CLI arguments override values from the YAML file. Keys use underscores
-    internally but accept hyphens on the command line (e.g. ``--sender-email``
-    maps to config key ``sender_email``).
+    When no CLI args are provided (or --gui is passed), opens a tkinter
+    form pre-filled with YAML defaults. Use --no-gui to force CLI mode.
 
     Args:
         description: Script description shown in ``--help``.
@@ -97,12 +91,23 @@ def parse_task_args(
     Returns:
         Merged config dictionary (YAML values overridden by CLI/GUI values).
     """
-    # Check for --gui flag early
     import sys as _sys
     check_argv = argv if argv is not None else _sys.argv[1:]
-    if "--gui" in check_argv:
-        # Remove --gui and check for --task
-        gui_argv = [a for a in check_argv if a != "--gui"]
+
+    # Determine GUI mode:
+    # - Default (no args) → GUI
+    # - --gui explicitly → GUI
+    # - --no-gui → CLI
+    # - Any other args → CLI
+    has_no_gui = "--no-gui" in check_argv
+    has_gui_flag = "--gui" in check_argv
+    has_other_args = any(a not in ("--gui", "--no-gui") for a in check_argv)
+
+    use_gui = has_gui_flag or (not has_no_gui and not has_other_args)
+
+    if use_gui:
+        # Remove --gui/--no-gui and check for --task
+        gui_argv = [a for a in check_argv if a not in ("--gui", "--no-gui")]
         task_name = default_task
         for i, arg in enumerate(gui_argv):
             if arg == "--task" and i + 1 < len(gui_argv):
@@ -116,9 +121,11 @@ def parse_task_args(
         return gui_task_args(description, task_name, config_keys)
 
     # First pass: parse just --task so we can load the YAML and discover keys
+    # Strip --no-gui before parsing
+    cli_argv = [a for a in check_argv if a != "--no-gui"] if argv is None else argv
     pre_parser = argparse.ArgumentParser(add_help=False)
     pre_parser.add_argument("--task", default=default_task)
-    pre_args, remaining = pre_parser.parse_known_args(argv)
+    pre_args, remaining = pre_parser.parse_known_args(cli_argv)
 
     config = load_task_config(pre_args.task)
 
@@ -160,7 +167,7 @@ def parse_task_args(
             parser.add_argument(flag, default=None, type=str,
                                 help=f"Override '{key}' (default from YAML: {default_val}).")
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args(cli_argv)
 
     # Merge: CLI overrides take precedence over YAML values
     for key in all_keys:

@@ -451,8 +451,17 @@ def main():
     args = parser.parse_args()
 
     if args.command is None:
-        # Default action: generate
-        cmd_generate(args)
+        # Default action: open GUI task selector
+        from lib.gui_config import gui_select_task
+        selected = gui_select_task()
+        if selected is None:
+            print("No task selected.")
+            sys.exit(0)
+        # Run the selected script with --gui flag
+        script_path = SCRIPTS_DIR / f"{selected}.py"
+        cmd = [sys.executable, str(script_path), "--gui"]
+        result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
+        sys.exit(result.returncode)
     else:
         args.func(args)
 
