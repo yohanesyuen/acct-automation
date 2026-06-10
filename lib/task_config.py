@@ -23,7 +23,7 @@ TASKS_DIR = PROJECT_ROOT / "tasks"
 
 TASK_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "extract_attachments": {
-        "root": "C:\\OUTPUT_DIR",
+        "root": "OUTPUT_DIR",
         "folder": "inbox",
         "sender_email": [],
         "keyword": [],
@@ -33,27 +33,27 @@ TASK_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "report_file": "Attachments_Report.csv",
     },
     "dump_emails": {
-        "root": "C:\\OUTPUT_DIR",
+        "root": "OUTPUT_DIR",
         "after_date": "2025-01-01",
         "folders": ["inbox", "sent"],
         "raw_emails_subdir": "RAW_EMAILS",
     },
     "process_msg_files": {
-        "root": "C:\\OUTPUT_DIR",
+        "root": "OUTPUT_DIR",
         "source_subdir": "RAW_EMAILS",
         "dest_subdir": "EMAILS_WITH_ATTACHMENTS",
         "file_types": [".xlsx", ".xls", ".xlsm", ".xlsb"],
         "report_file": "report.xlsx",
     },
     "filter_by_contacts": {
-        "root": "C:\\OUTPUT_DIR",
+        "root": "OUTPUT_DIR",
         "source_subdir": "GR_CANDIDATES",
         "dest_subdir": "FILTERED_EMAILS",
         "contacts": [],
         "report_file": "report.xlsx",
     },
     "search_excel_content": {
-        "root": "C:\\OUTPUT_DIR",
+        "root": "OUTPUT_DIR",
         "sender_email": [],
         "keyword": "GRN",
         "search_strategy": "pattern",
@@ -62,18 +62,33 @@ TASK_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "open_folder_on_complete": False,
     },
     "collect_excel": {
-        "root": "C:\\OUTPUT_DIR",
+        "root": "OUTPUT_DIR",
         "attachments_subdir": "ATTACHMENTS",
         "excel_subdir": "EXCEL_FILES",
         "report_file": "Excel_Collect_Report.csv",
     },
     "analyze_headers": {
-        "root": "C:\\OUTPUT_DIR",
+        "root": "OUTPUT_DIR",
         "search_term": ["GR"],
         "exclude_term": [],
         "source_subdir": "EXCEL_FILES",
         "report_file": "Header_Analysis_Report.csv",
     },
+}
+
+
+# Field type hints for the GUI — determines which picker to show
+# "directory": folder browser
+# "file_save:<ext>": file save dialog with extension filter
+# "text": plain text entry (default)
+FIELD_TYPES: Dict[str, str] = {
+    "root": "directory",
+    "attachments_subdir": "text",
+    "excel_subdir": "text",
+    "raw_emails_subdir": "text",
+    "source_subdir": "text",
+    "dest_subdir": "text",
+    "report_file": "file_save:csv,xlsx",
 }
 
 
@@ -86,7 +101,7 @@ def _get_default_config(task_name: str) -> Dict[str, Any]:
     if task_name in TASK_DEFAULTS:
         return dict(TASK_DEFAULTS[task_name])  # shallow copy
     # Fallback minimal config
-    return {"root": "C:\\OUTPUT_DIR"}
+    return {"root": "OUTPUT_DIR"}
 
 
 def _is_valid_config(config: Any) -> bool:

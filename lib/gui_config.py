@@ -4,12 +4,17 @@ Tkinter GUI form for task configuration.
 Provides:
   - gui_select_task: dropdown to choose which task to run
   - gui_task_args: form to edit config values before running
+
+Field types are determined by FIELD_TYPES in task_config.py:
+  - "directory": folder browser dialog
+  - "file_save:<ext>": file save dialog with extension filter
+  - "text": plain text entry (default)
 """
 
 import os
 import sys
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, messagebox
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 
@@ -31,12 +36,58 @@ def _get_display_name(script_name: str) -> str:
     return TASK_DISPLAY_NAMES.get(script_name, script_name.replace("_", " ").title())
 
 
+def _get_field_type(key: str) -> str:
+    """Get the field type for a config key."""
+    from lib.task_config import FIELD_TYPES
+    return FIELD_TYPES.get(key, "text")
+
+
 def _browse_folder(entry: tk.Entry) -> None:
     """Open a folder picker and set the entry value."""
     path = filedialog.askdirectory()
     if path:
         entry.delete(0, tk.END)
         entry.insert(0, path)
+
+
+def _browse_file_save(entry: tk.Entry, extensions: str) -> None:
+    """Open a file save dialog and set the entry value."""
+    ext_list = [e.strip() for e in extensions.split(",")]
+    filetypes = [(f"{e.upper()} files", f"*.{e}") for e in ext_list]
+    filetypes.append(("All files", "*.*"))
+
+    path = filedialog.asksaveasfilename(
+        defaultextension=f".{ext_list[0]}",
+        filetypes=filetypes,
+    )
+    if path:
+        entry.delete(0, tk.END)
+        entry.insert(0, path)
+
+
+def _is_placeholder(value: str) -> bool:
+    """Check if a value is a placeholder that needs user input."""
+    # Uppercase-only values without path separators are placeholders
+    stripped = value.strip()
+    if not stripped:
+        return True
+    # Match patterns like "OUTPUT_DIR", "RAW_EMAILS" (no path separators, all uppercase/underscore)
+    import re
+    return bool(re.match(r'^[A-Z][A-Z0-9_]*$', stripped))
+
+
+def _validate_config(config: Dict[str, Any], all_keys: list) -> Optional[str]:
+    """Validate config values. Returns error message or None if valid."""
+    field_type = None
+    for key in all_keys:
+        ft = _get_field_type(key)
+        value = config.get(key, "")
+
+        if ft == "directory":
+            if isinstance(value, str) and _is_placeholder(value):
+                return f"'{key.replace('_', ' ').title()}' must be set to a valid directory path.\n\nPlease use the Browse button to select a folder."
+
+    return None
 
 
 def gui_select_task() -> Optional[str]:
@@ -137,11 +188,10 @@ def gui_task_args(
     prefilled_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Show a tkinter form for editing task config and return the merged config.
+    Show a tkinter form for editing task config and return the final config.
 
-    Displays a form pre-filled with config values. If prefilled_config is
-    provided, uses those values (already merged from YAML + CLI). Otherwise
-    loads fresh from the YAML file.
+    Uses FIELD_TYPES to determine which picker to show for each field.
+    Validates that directory fields are set to real paths (not placeholders).
 
     Args:
         description: Script description shown as the window title.
@@ -169,21 +219,22 @@ def gui_task_args(
     result = {"cancelled": True}
 
     # Build the form
-    root = tk.Tk()
-    root.title(f"Task: {description}")
-    root.resizable(True, False)
+    window = tk.Tk()
+    window.title(f"Task: {description}")
+    window.resizable(True, False)
 
     # Style
     style = ttk.Style()
     style.configure("TLabel", padding=5)
     style.configure("TEntry", padding=3)
     style.configure("TButton", padding=5)
+    style.configure("Required.TEntry", fieldbackground="#fff3cd")
 
     # Header
-    header = ttk.Label(root, text=description, font=("Segoe UI", 11, "bold"))
+    header = ttk.Label(window, text=description, font=("Segoe UI", 11, "bold"))
     header.grid(row=0, column=0, columnspan=3, padx=10, pady=(10, 5), sticky="w")
 
-    task_label = ttk.Label(root, text=f"Task config: {default_task}.yml", foreground="gray")
+    task_label = ttk.Label(window, text=f"Config: tasks/{default_task}.yml", foreground="gray")
     task_label.grid(row=1, column=0, columnspan=3, padx=10, pady=(0, 10), sticky="w")
 
     entries = {}
@@ -191,10 +242,11 @@ def gui_task_args(
 
     for key in all_keys:
         value = config.get(key, "")
+        field_type = _get_field_type(key)
 
-        # Display label (replace underscores with spaces, title case)
+        # Display label
         display_name = key.replace("_", " ").title()
-        label = ttk.Label(root, text=display_name + ":")
+        label = ttk.Label(window, text=display_name + ":")
         label.grid(row=row_idx, column=0, padx=(10, 5), pady=3, sticky="e")
 
         # Convert list values to comma-separated display
@@ -205,33 +257,59 @@ def gui_task_args(
         else:
             display_value = str(value) if value is not None else ""
 
-        entry = ttk.Entry(root, width=60)
+        entry = ttk.Entry(window, width=60)
         entry.insert(0, display_value)
         entry.grid(row=row_idx, column=1, padx=5, pady=3, sticky="ew")
         entries[key] = entry
 
-        # Add browse button for path-like keys
-        if key in ("root",) or key.endswith("_subdir") or key.endswith("_dir"):
-            browse_btn = ttk.Button(root, text="Browse", width=8,
+        # Highlight placeholder values
+        if field_type == "directory" and _is_placeholder(display_value):
+            entry.configure(style="Required.TEntry")
+
+        # Add appropriate browse button based on field type
+        if field_type == "directory":
+            browse_btn = ttk.Button(window, text="Browse…", width=8,
                                     command=lambda e=entry: _browse_folder(e))
+            browse_btn.grid(row=row_idx, column=2, padx=(0, 10), pady=3)
+        elif field_type.startswith("file_save:"):
+            extensions = field_type.split(":", 1)[1]
+            browse_btn = ttk.Button(window, text="Browse…", width=8,
+                                    command=lambda e=entry, ext=extensions: _browse_file_save(e, ext))
             browse_btn.grid(row=row_idx, column=2, padx=(0, 10), pady=3)
 
         row_idx += 1
 
     # Configure column weights for resizing
-    root.columnconfigure(1, weight=1)
+    window.columnconfigure(1, weight=1)
 
     # Buttons
-    btn_frame = ttk.Frame(root)
+    btn_frame = ttk.Frame(window)
     btn_frame.grid(row=row_idx, column=0, columnspan=3, pady=15)
 
     def on_run():
+        # Merge values first for validation
+        for key in all_keys:
+            entry_value = entries[key].get().strip()
+            original_value = config.get(key)
+            if isinstance(original_value, list):
+                config[key] = [v.strip() for v in entry_value.split(",")] if entry_value else []
+            elif isinstance(original_value, bool):
+                config[key] = entry_value.lower() in ("true", "1", "yes")
+            else:
+                config[key] = entry_value
+
+        # Validate
+        error = _validate_config(config, all_keys)
+        if error:
+            messagebox.showwarning("Configuration Required", error)
+            return  # Don't close — let user fix it
+
         result["cancelled"] = False
-        root.destroy()
+        window.destroy()
 
     def on_cancel():
         result["cancelled"] = True
-        root.destroy()
+        window.destroy()
 
     run_btn = ttk.Button(btn_frame, text="▶ Run", command=on_run, width=12)
     run_btn.pack(side=tk.LEFT, padx=10)
@@ -239,38 +317,22 @@ def gui_task_args(
     cancel_btn = ttk.Button(btn_frame, text="Cancel", command=on_cancel, width=12)
     cancel_btn.pack(side=tk.LEFT, padx=10)
 
-    # Bind Enter key to Run
-    root.bind("<Return>", lambda e: on_run())
-    root.bind("<Escape>", lambda e: on_cancel())
+    # Bind keys
+    window.bind("<Return>", lambda e: on_run())
+    window.bind("<Escape>", lambda e: on_cancel())
 
     # Center window
-    root.update_idletasks()
-    width = root.winfo_width()
-    height = root.winfo_height()
-    x = (root.winfo_screenwidth() // 2) - (width // 2)
-    y = (root.winfo_screenheight() // 2) - (height // 2)
-    root.geometry(f"+{x}+{y}")
+    window.update_idletasks()
+    width = window.winfo_width()
+    height = window.winfo_height()
+    x = (window.winfo_screenwidth() // 2) - (width // 2)
+    y = (window.winfo_screenheight() // 2) - (height // 2)
+    window.geometry(f"+{x}+{y}")
 
-    root.mainloop()
+    window.mainloop()
 
     if result["cancelled"]:
         print("Cancelled by user.")
         sys.exit(0)
-
-    # Merge edited values back into config
-    for key in all_keys:
-        entry_value = entries[key].get().strip()
-        original_value = config.get(key)
-
-        if isinstance(original_value, list):
-            # Split comma-separated back into list
-            if entry_value:
-                config[key] = [v.strip() for v in entry_value.split(",")]
-            else:
-                config[key] = []
-        elif isinstance(original_value, bool):
-            config[key] = entry_value.lower() in ("true", "1", "yes")
-        else:
-            config[key] = entry_value
 
     return config
