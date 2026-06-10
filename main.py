@@ -9,15 +9,15 @@ Subcommands:
 Usage:
     python main.py generate
     python main.py list
-    python main.py run extract_grn
-    python main.py run find_gr_numbers --extra-flag
+    python main.py run extract_attachments
+    python main.py run dump_emails --after-date 2025-06-01
 """
 
 import argparse
 import importlib
+import importlib.util
 import inspect
 import pkgutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -27,6 +27,10 @@ LIB_ROOT = PROJECT_ROOT / "lib"
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 TEMPLATE_PATH = PROJECT_ROOT / "pre_prompt_template.md"
 OUTPUT_PATH = PROJECT_ROOT / "pre_prompt.md"
+
+# Ensure project root is on sys.path for script imports
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 # ---------------------------------------------------------------------------
@@ -239,23 +243,96 @@ def cmd_list(args):
         print()
 
 
+def _load_script_module(script_name: str):
+    """Dynamically load a script module from scripts/ directory."""
+    script_path = SCRIPTS_DIR / f"{script_name}.py"
+    if not script_path.exists():
+        return None
+
+    spec = importlib.util.spec_from_file_location(
+        f"scripts.{script_name}", str(script_path)
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _get_script_entry_function(module, script_name: str):
+    """Get the main entry function from a script module (matches script name)."""
+    # Try exact match first
+    func = getattr(module, script_name, None)
+    if func and callable(func):
+        return func
+
+    # Fallback: find any public function that takes a single 'config' arg
+    for name, obj in inspect.getmembers(module, inspect.isfunction):
+        if name.startswith("_"):
+            continue
+        sig = inspect.signature(obj)
+        params = list(sig.parameters.keys())
+        if params == ["config"]:
+            return obj
+
+    return None
+
+
+def _run_script(script_name: str, argv: list = None):
+    """Load and run a script by name, passing argv for parse_task_args."""
+    if argv:
+        sys.argv = [f"scripts/{script_name}.py"] + argv
+    else:
+        sys.argv = [f"scripts/{script_name}.py"]
+
+    module = _load_script_module(script_name)
+    if module is None:
+        available = ", ".join(get_available_scripts())
+        print(f"Error: script '{script_name}' not found in scripts/")
+        print(f"Available: {available}")
+        sys.exit(1)
+
+    entry_fn = _get_script_entry_function(module, script_name)
+    if entry_fn is None:
+        print(f"Error: no entry function found in scripts/{script_name}.py")
+        sys.exit(1)
+
+    # parse_task_args is called inside the module's __main__ block,
+    # but since we're importing, we call it explicitly
+    from lib.task_config import parse_task_args
+
+    # Find the parse_task_args call parameters from the module
+    # Look for description and default_task in the module source
+    description = ""
+    default_task = script_name
+
+    # Try to extract from module docstring
+    if module.__doc__:
+        description = module.__doc__.strip().split("\n")[0]
+
+    # Call parse_task_args to get config (handles GUI + CLI)
+    config = parse_task_args(
+        description=description or script_name.replace("_", " ").title(),
+        default_task=default_task,
+        argv=argv,
+    )
+
+    # Invoke the entry function
+    entry_fn(config)
+
+
 def cmd_run(args):
     """Run a task script by name, or list available scripts if none specified."""
     if args.script is None:
         cmd_list(args)
         return
 
-    script_path = SCRIPTS_DIR / f"{args.script}.py"
-
-    if not script_path.exists():
+    script_name = args.script
+    if not (SCRIPTS_DIR / f"{script_name}.py").exists():
         available = ", ".join(get_available_scripts())
-        print(f"Error: script '{args.script}' not found in scripts/")
+        print(f"Error: script '{script_name}' not found in scripts/")
         print(f"Available: {available}")
         sys.exit(1)
 
-    cmd = [sys.executable, str(script_path)] + args.script_args
-    result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
-    sys.exit(result.returncode)
+    _run_script(script_name, args.script_args or [])
 
 
 # ---------------------------------------------------------------------------
@@ -400,11 +477,7 @@ def main():
         if selected is None:
             print("No task selected.")
             sys.exit(0)
-        # Run the selected script (GUI opens automatically with no args)
-        script_path = SCRIPTS_DIR / f"{selected}.py"
-        cmd = [sys.executable, str(script_path)]
-        result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
-        sys.exit(result.returncode)
+        _run_script(selected)
     else:
         args.func(args)
 

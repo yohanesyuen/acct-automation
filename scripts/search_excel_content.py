@@ -14,7 +14,6 @@ Usage:
 import os
 import sys
 import shutil
-import subprocess
 from pathlib import Path
 
 # Ensure project root is on sys.path so 'lib' package resolves correctly.
@@ -94,7 +93,7 @@ def search_excel_content(config):
     print(f"\nDone. {len(report)} file(s) saved to {output_folder}")
 
     if config.get("open_folder_on_complete", False) and report:
-        subprocess.Popen(["explorer.exe", output_folder])
+        os.startfile(output_folder)
 
 
 if __name__ == "__main__":
