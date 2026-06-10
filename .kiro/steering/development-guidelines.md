@@ -1,5 +1,12 @@
 # Development Guidelines
 
+## Project Scope
+
+This is a general-purpose accounting automation tool — not limited to GRN extraction.
+It automates repetitive accounting tasks: email processing, attachment extraction,
+Excel analysis, data filtering, and report generation. New tasks should be built
+as standalone scripts following the established patterns.
+
 ## Outlook / COM Automation
 
 - Do NOT run or execute anything that invokes Outlook (or any Office COM automation) on the development machine.
@@ -17,17 +24,21 @@
 
 - **GUI-first**: All scripts open a tkinter form pre-populated with config values. CLI args pre-fill the form but don't bypass it.
 - **Config auto-save**: After GUI confirmation, the final config is automatically saved back to `tasks/<task>.yml`.
-- **Hardcoded defaults**: Each task has defaults in `lib/task_config.py` → `TASK_DEFAULTS` dict. No `tasks_defaults/` directory exists.
+- **Hardcoded defaults**: Each task has defaults in `lib/task_config.py` → `TASK_DEFAULTS` dict. No `tasks_defaults/` directory.
 - **Self-bootstrapping**: If a task YAML doesn't exist or is invalid, it's auto-generated from `TASK_DEFAULTS`.
-- **Path defaults**: Use uppercase underscore-delimited names for directory values (e.g. `RAW_EMAILS`, `EXCEL_FILES`, `ATTACHMENTS`).
+- **Path defaults**: Use uppercase underscore-delimited placeholders (e.g. `OUTPUT_DIR`, `RAW_EMAILS`) that force the user to browse for a real path.
+- **Field types**: `FIELD_TYPES` in `task_config.py` controls GUI behavior (directory picker vs file save dialog vs text entry).
+- **Dynamic loading**: Scripts are loaded via `importlib` — no subprocess.
+- **CLI module**: Subcommand handlers and parser live in `lib/cli.py`. `main.py` is just the entry point + introspection.
 
 ## Adding a New Script
 
 1. Add hardcoded defaults to `TASK_DEFAULTS` in `lib/task_config.py`.
-2. Add a display name to `TASK_DISPLAY_NAMES` in `lib/gui_config.py`.
-3. Create `scripts/<name>.py` using `parse_task_args()` which handles CLI parsing + GUI form + auto-save.
-4. Use `unpack_config(config, "key1", "key2=default")` for clean config extraction.
-5. The `tasks/<name>.yml` will auto-generate on first run.
+2. Add field type entries to `FIELD_TYPES` for any directory/file fields.
+3. Add a display name to `TASK_DISPLAY_NAMES` in `lib/gui_config.py`.
+4. Create `scripts/<name>.py` using `parse_task_args()` which handles CLI + GUI + auto-save.
+5. Use `unpack_config(config, "key1", "key2=default")` for clean config extraction.
+6. The `tasks/<name>.yml` will auto-generate on first run.
 
 ## Script Conventions
 

@@ -1,7 +1,9 @@
 # acct-automation — Project Context
 
-You are assisting with an accounting automation project that extracts
-GRN (Goods Received Note) data from Outlook emails and Excel attachments.
+You are assisting with a general-purpose accounting automation tool. The
+project automates repetitive tasks around email processing, attachment
+extraction, Excel analysis, and data filtering — primarily interfacing
+with Outlook and Excel files on Windows.
 
 Below is a complete reference of the project's library modules and
 available task scripts. Use this context to understand what already exists
@@ -20,6 +22,7 @@ before proposing changes or new code.
 - **GUI-first**: Running any script opens a tkinter form pre-populated with saved config. CLI args pre-fill the form but don't bypass it.
 - **Auto-save**: After the user clicks "Run", config is saved back to `tasks/<task>.yml`. Next run remembers the last-used values.
 - **Self-bootstrapping**: No setup required. If `tasks/<task>.yml` doesn't exist or is invalid, it's auto-generated from hardcoded defaults in `lib/task_config.py`.
+- **Dynamic loading**: Scripts are loaded via `importlib` — no subprocess spawning.
 - **`--help`** still works without GUI for documentation.
 
 ## CLI Interface
@@ -55,16 +58,18 @@ Precedence (highest wins):
 
 - List values: YAML arrays or comma-separated CLI (`--keyword "GRN,Invoice"`)
 - Empty list `[]` = disabled/no filter
-- Path subdirectories: uppercase underscore-delimited defaults (`RAW_EMAILS`, `EXCEL_FILES`)
+- Path defaults: uppercase underscore-delimited placeholders (`OUTPUT_DIR`) — forces user to select via Browse
 - Booleans: `true`/`false` in YAML
+- Field types enforced via `FIELD_TYPES` in `lib/task_config.py` (directory picker, file save dialog, text)
 
 ---
 
 ## Adding a New Script
 
 1. Add defaults to `TASK_DEFAULTS` in `lib/task_config.py`
-2. Add display name to `TASK_DISPLAY_NAMES` in `lib/gui_config.py`
-3. Create `scripts/<name>.py`:
+2. Add field types to `FIELD_TYPES` if the task has directory/file path fields
+3. Add display name to `TASK_DISPLAY_NAMES` in `lib/gui_config.py`
+4. Create `scripts/<name>.py`:
 
 ```python
 """
@@ -80,7 +85,7 @@ from lib.task_config import parse_task_args, unpack_config, get_output_dir, get_
 
 
 def my_task(config):
-    sender_email, keyword = unpack_config(config, "sender_email", "keyword")
+    value_a, value_b = unpack_config(config, "key_a", "key_b=default")
     output_folder = get_output_dir(config, config.get("output_subdir", "OUTPUT"))
     # ... task logic ...
 
