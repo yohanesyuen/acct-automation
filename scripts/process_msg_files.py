@@ -80,6 +80,9 @@ def process_msg_files(config):
     dest_dir = get_output_dir(config, dest_subdir)
     report_path = get_report_path(config, report_file)
 
+    # Ensure source directory exists
+    os.makedirs(source_dir, exist_ok=True)
+
     # Normalize file_types filter — default to Excel extensions
     if file_types is None:
         ext_filter = [".xlsx", ".xls", ".xlsm", ".xlsb"]
@@ -91,10 +94,6 @@ def process_msg_files(config):
         ext_filter = [ft if ft.startswith(".") else f".{ft}" for ft in file_types]
     if ext_filter:
         ext_filter = [e.lower() for e in ext_filter]
-
-    if not os.path.exists(source_dir):
-        print(f"Source directory does not exist: {source_dir}")
-        sys.exit(1)
 
     msg_files = glob.glob(os.path.join(source_dir, "**", "*.msg"), recursive=True)
 
