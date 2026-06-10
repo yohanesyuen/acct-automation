@@ -7,6 +7,13 @@ It automates repetitive accounting tasks: email processing, attachment extractio
 Excel analysis, data filtering, and report generation. New tasks should be built
 as standalone scripts following the established patterns.
 
+## Python Notebooks
+
+- When editing `.ipynb` files, always create new cells or update the last empty cell — do not overwrite cells that have existing outputs.
+- Notebooks in `study/` are for ad-hoc exploration and are gitignored.
+- Keep cell outputs in the notebook (they serve as documentation of results).
+- Use `display()` for DataFrame rendering in Jupyter.
+
 ## Outlook / COM Automation
 
 - Do NOT run or execute anything that invokes Outlook (or any Office COM automation) on the development machine.
