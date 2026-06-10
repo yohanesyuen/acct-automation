@@ -134,24 +134,30 @@ def gui_task_args(
     description: str,
     default_task: str,
     config_keys: Optional[List[str]] = None,
+    prefilled_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Show a tkinter form for editing task config and return the merged config.
 
-    Loads the YAML defaults, presents them in a form, and returns the
-    user-edited values as a config dictionary. If the user cancels, exits.
+    Displays a form pre-filled with config values. If prefilled_config is
+    provided, uses those values (already merged from YAML + CLI). Otherwise
+    loads fresh from the YAML file.
 
     Args:
         description: Script description shown as the window title.
         default_task: Default task config name to load.
         config_keys: Optional list of keys to show. If None, shows all.
+        prefilled_config: Optional pre-merged config dict to populate the form.
 
     Returns:
         Config dictionary with user-edited values.
     """
     from lib.task_config import load_task_config
 
-    config = load_task_config(default_task)
+    if prefilled_config is not None:
+        config = prefilled_config
+    else:
+        config = load_task_config(default_task)
 
     # Determine which keys to show
     if config_keys is None:

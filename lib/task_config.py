@@ -76,89 +76,57 @@ def parse_task_args(
     argv: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
-    Parse CLI arguments and return a merged task config dictionary.
+    Parse CLI arguments, merge with YAML defaults, and show a GUI form.
 
-    When no CLI args are provided (or --gui is passed), opens a tkinter
-    form pre-filled with YAML defaults. Use --no-gui to force CLI mode.
+    The GUI form is always shown, pre-populated with values from:
+    1. YAML task config (base defaults)
+    2. CLI arguments (override YAML values)
+
+    The user can then review/edit all values in the form before running.
+
+    Pass --help to see available CLI flags without launching GUI.
 
     Args:
-        description: Script description shown in ``--help``.
+        description: Script description shown in ``--help`` and GUI title.
         default_task: Default task config name if ``--task`` is not provided.
         config_keys: List of config keys to expose as CLI flags. If None,
                      the keys are inferred from the YAML file after loading.
         argv: Optional argument list (defaults to sys.argv[1:]).
 
     Returns:
-        Merged config dictionary (YAML values overridden by CLI/GUI values).
+        Merged config dictionary after GUI confirmation.
     """
     import sys as _sys
     check_argv = argv if argv is not None else _sys.argv[1:]
 
-    # Determine GUI mode:
-    # - Default (no args) → GUI
-    # - --gui explicitly → GUI
-    # - --no-gui → CLI
-    # - Any other args → CLI
-    has_no_gui = "--no-gui" in check_argv
-    has_gui_flag = "--gui" in check_argv
-    has_other_args = any(a not in ("--gui", "--no-gui") for a in check_argv)
-
-    use_gui = has_gui_flag or (not has_no_gui and not has_other_args)
-
-    if use_gui:
-        # Remove --gui/--no-gui and check for --task
-        gui_argv = [a for a in check_argv if a not in ("--gui", "--no-gui")]
-        task_name = default_task
-        for i, arg in enumerate(gui_argv):
-            if arg == "--task" and i + 1 < len(gui_argv):
-                task_name = gui_argv[i + 1]
-                break
-            elif arg.startswith("--task="):
-                task_name = arg.split("=", 1)[1]
-                break
-
-        from lib.gui_config import gui_task_args
-        return gui_task_args(description, task_name, config_keys)
-
-    # First pass: parse just --task so we can load the YAML and discover keys
-    # Strip --no-gui before parsing
-    cli_argv = [a for a in check_argv if a != "--no-gui"] if argv is None else argv
+    # First pass: parse --task to load the right YAML
     pre_parser = argparse.ArgumentParser(add_help=False)
     pre_parser.add_argument("--task", default=default_task)
-    pre_args, remaining = pre_parser.parse_known_args(cli_argv)
+    pre_args, _remaining = pre_parser.parse_known_args(check_argv)
 
     config = load_task_config(pre_args.task)
 
-    # Determine which keys to expose as CLI flags
+    # Determine which keys to expose
     if config_keys is None:
         config_keys = [k for k in config.keys() if k != "root"]
 
-    # Always include root
     all_keys = ["root"] + [k for k in config_keys if k != "root"]
 
-    # Build the full parser
+    # Build full parser for --help and CLI override parsing
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
         "--task",
         default=default_task,
         help=f"Task config name to load from tasks/ (default: {default_task}).",
     )
-    parser.add_argument(
-        "--gui",
-        action="store_true",
-        default=False,
-        help="Open a GUI form to edit config values before running.",
-    )
 
     for key in all_keys:
         flag = f"--{key.replace('_', '-')}"
         default_val = config.get(key)
-        # Infer type from the YAML value
         if isinstance(default_val, bool):
             parser.add_argument(flag, default=None, action="store_true",
                                 help=f"Override '{key}' (default from YAML: {default_val}).")
         elif isinstance(default_val, list):
-            # List values: accept comma-separated string from CLI
             display_val = ", ".join(str(v) for v in default_val)
             parser.add_argument(flag, default=None, type=str,
                                 help=f"Override '{key}' as comma-separated values "
@@ -167,24 +135,24 @@ def parse_task_args(
             parser.add_argument(flag, default=None, type=str,
                                 help=f"Override '{key}' (default from YAML: {default_val}).")
 
-    args = parser.parse_args(cli_argv)
+    args = parser.parse_args(check_argv)
 
-    # Merge: CLI overrides take precedence over YAML values
+    # Merge CLI overrides into config
     for key in all_keys:
         cli_value = getattr(args, key, None)
         if cli_value is not None:
-            # If the CLI value contains commas, treat as a list
-            if "," in cli_value:
+            if isinstance(cli_value, str) and "," in cli_value:
                 config[key] = [v.strip() for v in cli_value.split(",")]
             else:
                 yaml_val = config.get(key)
-                # If YAML defined it as a list, wrap single CLI value in a list
-                if isinstance(yaml_val, list):
+                if isinstance(yaml_val, list) and isinstance(cli_value, str):
                     config[key] = [cli_value.strip()]
                 else:
                     config[key] = cli_value
 
-    return config
+    # Show GUI form pre-populated with merged config
+    from lib.gui_config import gui_task_args
+    return gui_task_args(description, pre_args.task, config_keys, prefilled_config=config)
 
 
 def unpack_config(config: Dict[str, Any], *keys: str) -> tuple:
