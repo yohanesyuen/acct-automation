@@ -38,3 +38,6 @@ Emails/
 
 # Secrets
 .env
+
+# Study / scratch
+study/
