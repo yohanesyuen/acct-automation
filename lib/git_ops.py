@@ -157,6 +157,146 @@ def _load_github_pat() -> Optional[str]:
     return None
 
 
+def _get_credentials_callbacks():
+    """Build pygit2 RemoteCallbacks with PAT if available."""
+    pat = _load_github_pat()
+    if pat:
+        return pygit2.RemoteCallbacks(
+            credentials=pygit2.UserPass("x-access-token", pat)
+        )
+    return pygit2.RemoteCallbacks()
+
+
+def fetch(repo: pygit2.Repository, remote_name: str = "origin") -> None:
+    """
+    Fetch latest refs from a remote.
+
+    Args:
+        repo: The pygit2 Repository object.
+        remote_name: Name of the remote (default: "origin").
+    """
+    try:
+        remote = repo.remotes[remote_name]
+    except KeyError:
+        return  # No remote configured — skip silently
+
+    callbacks = _get_credentials_callbacks()
+    remote.fetch(callbacks=callbacks)
+
+
+def get_commits_behind(repo: pygit2.Repository, remote_name: str = "origin") -> int:
+    """
+    Count how many commits the local branch is behind the remote tracking branch.
+
+    Args:
+        repo: The pygit2 Repository object.
+        remote_name: Name of the remote (default: "origin").
+
+    Returns:
+        Number of commits behind, or 0 if up-to-date or no tracking branch.
+    """
+    try:
+        branch = repo.head.shorthand
+        local_oid = repo.head.target
+        remote_ref = f"refs/remotes/{remote_name}/{branch}"
+        remote_oid = repo.references[remote_ref].target
+    except (KeyError, pygit2.GitError):
+        return 0
+
+    behind, _ahead = repo.ahead_behind(local_oid, remote_oid)
+    # ahead_behind returns (ahead, behind) from local perspective
+    # We want "behind" = how many commits remote has that we don't
+    _, behind_count = repo.ahead_behind(local_oid, remote_oid)
+    return behind_count
+
+
+def has_uncommitted_changes(repo: pygit2.Repository) -> bool:
+    """Check if there are any uncommitted changes (staged, modified, or untracked)."""
+    status = repo.status()
+    return any(flags != pygit2.GIT_STATUS_CURRENT for flags in status.values())
+
+
+def stash(repo: pygit2.Repository) -> Optional[str]:
+    """
+    Stash all uncommitted changes.
+
+    Returns:
+        The stash OID as hex string, or None if nothing to stash.
+    """
+    if not has_uncommitted_changes(repo):
+        return None
+
+    config = repo.config
+    try:
+        name = config["user.name"]
+        email = config["user.email"]
+    except KeyError:
+        name = "acct-automation"
+        email = "automation@local"
+
+    sig = pygit2.Signature(name, email)
+    oid = repo.stash(sig, message="Auto-stash before pull")
+    return str(oid)
+
+
+def stash_pop(repo: pygit2.Repository) -> None:
+    """Pop the most recent stash entry."""
+    try:
+        repo.stash_pop()
+    except KeyError:
+        pass  # No stash to pop
+
+
+def pull(repo: pygit2.Repository, remote_name: str = "origin") -> bool:
+    """
+    Pull (fetch + fast-forward merge) from the remote tracking branch.
+
+    Automatically stashes uncommitted changes before pulling and pops
+    them after.
+
+    Args:
+        repo: The pygit2 Repository object.
+        remote_name: Name of the remote (default: "origin").
+
+    Returns:
+        True if the pull updated the branch, False if already up-to-date.
+    """
+    branch = repo.head.shorthand
+
+    # Stash if needed
+    had_changes = has_uncommitted_changes(repo)
+    if had_changes:
+        stash(repo)
+
+    try:
+        # Fetch
+        fetch(repo, remote_name)
+
+        # Find remote tracking ref
+        remote_ref = f"refs/remotes/{remote_name}/{branch}"
+        try:
+            remote_oid = repo.references[remote_ref].target
+        except KeyError:
+            return False
+
+        local_oid = repo.head.target
+        if local_oid == remote_oid:
+            return False
+
+        # Fast-forward merge
+        repo.checkout_tree(repo.get(remote_oid))
+        ref = repo.references.get(f"refs/heads/{branch}")
+        if ref:
+            ref.set_target(remote_oid)
+        repo.head.set_target(remote_oid)
+
+        return True
+    finally:
+        # Pop stash if we stashed
+        if had_changes:
+            stash_pop(repo)
+
+
 def push(repo: pygit2.Repository, remote_name: str = "origin", branch: Optional[str] = None) -> None:
     """
     Push the current branch to a remote.
@@ -182,13 +322,5 @@ def push(repo: pygit2.Repository, remote_name: str = "origin", branch: Optional[
 
     refspec = f"refs/heads/{branch}:refs/heads/{branch}"
 
-    # Build credentials callback using PAT if available
-    pat = _load_github_pat()
-    if pat:
-        callbacks = pygit2.RemoteCallbacks(
-            credentials=pygit2.UserPass("x-access-token", pat)
-        )
-    else:
-        callbacks = pygit2.RemoteCallbacks()
-
+    callbacks = _get_credentials_callbacks()
     remote.push([refspec], callbacks=callbacks)

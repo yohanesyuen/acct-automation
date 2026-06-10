@@ -160,10 +160,15 @@ def main():
     if args.command is None:
         # Default: open GUI task selector
         from lib.gui_config import gui_select_task
-        selected = gui_select_task()
-        if selected is None:
-            print("No task selected.")
-            sys.exit(0)
+        while True:
+            selected = gui_select_task()
+            if selected is None:
+                print("No task selected.")
+                sys.exit(0)
+            if selected == "__restart__":
+                # After a pull, restart the selector to pick up new scripts
+                continue
+            break
         run_script(selected)
     else:
         args.func(args)

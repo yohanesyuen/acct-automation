@@ -94,6 +94,9 @@ def gui_select_task() -> Optional[str]:
     """
     Show a dropdown to select which task script to run.
 
+    Runs git fetch on startup to check for updates. Shows a "Pull (N behind)"
+    button if the local branch is behind the remote.
+
     Returns:
         The script name (e.g. "extract_attachments"), or None if cancelled.
     """
@@ -108,6 +111,16 @@ def gui_select_task() -> Optional[str]:
 
     if not scripts:
         return None
+
+    # Git fetch and check how far behind we are
+    commits_behind = 0
+    try:
+        from lib.git_ops import get_repo, fetch, get_commits_behind, pull
+        repo = get_repo()
+        fetch(repo)
+        commits_behind = get_commits_behind(repo)
+    except Exception:
+        pass  # Git not configured or no remote — skip silently
 
     result = {"selected": None}
 
@@ -158,6 +171,30 @@ def gui_select_task() -> Optional[str]:
     def on_cancel():
         result["selected"] = None
         root.destroy()
+
+    def on_pull():
+        """Pull latest changes from remote."""
+        try:
+            from lib.git_ops import get_repo, pull as git_pull
+            repo = get_repo()
+            updated = git_pull(repo)
+            if updated:
+                messagebox.showinfo("Pull Complete", "Updated to latest version.\nThe app will now restart.")
+                root.destroy()
+                # Re-launch by returning a special sentinel
+                result["selected"] = "__restart__"
+            else:
+                messagebox.showinfo("Pull", "Already up to date.")
+        except Exception as e:
+            messagebox.showerror("Pull Failed", str(e))
+
+    # Pull button (only show if behind)
+    if commits_behind > 0:
+        pull_btn = ttk.Button(
+            btn_frame, text=f"⬇ Pull ({commits_behind} behind)",
+            command=on_pull, width=20,
+        )
+        pull_btn.pack(side=tk.LEFT, padx=10)
 
     select_btn = ttk.Button(btn_frame, text="Next →", command=on_select, width=12)
     select_btn.pack(side=tk.LEFT, padx=10)
