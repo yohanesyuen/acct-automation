@@ -80,6 +80,7 @@ def parse_task_args(
 
     Builds an argparse parser with:
     - ``--task``: which task YAML to load (default provided by caller).
+    - ``--gui``: open a tkinter form instead of using CLI args.
     - One ``--<key>`` flag for each config key specified in ``config_keys``.
 
     CLI arguments override values from the YAML file. Keys use underscores
@@ -94,8 +95,26 @@ def parse_task_args(
         argv: Optional argument list (defaults to sys.argv[1:]).
 
     Returns:
-        Merged config dictionary (YAML values overridden by CLI values).
+        Merged config dictionary (YAML values overridden by CLI/GUI values).
     """
+    # Check for --gui flag early
+    import sys as _sys
+    check_argv = argv if argv is not None else _sys.argv[1:]
+    if "--gui" in check_argv:
+        # Remove --gui and check for --task
+        gui_argv = [a for a in check_argv if a != "--gui"]
+        task_name = default_task
+        for i, arg in enumerate(gui_argv):
+            if arg == "--task" and i + 1 < len(gui_argv):
+                task_name = gui_argv[i + 1]
+                break
+            elif arg.startswith("--task="):
+                task_name = arg.split("=", 1)[1]
+                break
+
+        from lib.gui_config import gui_task_args
+        return gui_task_args(description, task_name, config_keys)
+
     # First pass: parse just --task so we can load the YAML and discover keys
     pre_parser = argparse.ArgumentParser(add_help=False)
     pre_parser.add_argument("--task", default=default_task)
@@ -116,6 +135,12 @@ def parse_task_args(
         "--task",
         default=default_task,
         help=f"Task config name to load from tasks/ (default: {default_task}).",
+    )
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        default=False,
+        help="Open a GUI form to edit config values before running.",
     )
 
     for key in all_keys:
