@@ -239,12 +239,31 @@ def stash(repo: pygit2.Repository) -> Optional[str]:
     return str(oid)
 
 
-def stash_pop(repo: pygit2.Repository) -> None:
-    """Pop the most recent stash entry."""
+def stash_pop(repo: pygit2.Repository) -> bool:
+    """
+    Pop the most recent stash entry.
+
+    If the pop fails (e.g. conflicts), drops the stash to discard the
+    local changes and resets the working directory to a clean state.
+
+    Returns:
+        True if pop succeeded, False if stash was dropped due to failure.
+    """
     try:
         repo.stash_pop()
-    except KeyError:
-        pass  # No stash to pop
+        return True
+    except (KeyError, pygit2.GitError):
+        # Pop failed — drop the stash (discard local changes)
+        try:
+            repo.stash_drop()
+        except (KeyError, pygit2.GitError):
+            pass
+        # Reset working directory to HEAD to ensure clean state
+        try:
+            repo.checkout_head(strategy=pygit2.GIT_CHECKOUT_FORCE)
+        except pygit2.GitError:
+            pass
+        return False
 
 
 def pull(repo: pygit2.Repository, remote_name: str = "origin") -> bool:
@@ -260,6 +279,10 @@ def pull(repo: pygit2.Repository, remote_name: str = "origin") -> bool:
 
     Returns:
         True if the pull updated the branch, False if already up-to-date.
+
+    Raises:
+        Note: if stash pop fails after pull, local changes are discarded
+        to ensure the working directory matches the pulled version.
     """
     branch = repo.head.shorthand
 
@@ -292,9 +315,11 @@ def pull(repo: pygit2.Repository, remote_name: str = "origin") -> bool:
 
         return True
     finally:
-        # Pop stash if we stashed
+        # Pop stash if we stashed — if it fails, discard local changes
         if had_changes:
-            stash_pop(repo)
+            success = stash_pop(repo)
+            if not success:
+                print("  [git] Stash pop failed — local changes discarded.")
 
 
 def push(repo: pygit2.Repository, remote_name: str = "origin", branch: Optional[str] = None) -> None:
