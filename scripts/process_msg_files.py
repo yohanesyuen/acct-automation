@@ -1,23 +1,23 @@
 """
-Extract attachments from raw .msg files into Emails_With_Attachments.
+Process .msg files: extract attachments with metadata.
 
-Scans Root/Raw_Emails for .msg files, extracts matching attachments into
-per-email subfolders (named <subject>_<date>), and generates:
-  - A metadata.yml in each subfolder with email metadata (to/from/cc/body)
-  - A report.xlsx summarizing all extracted attachments
+Scans a source directory for .msg files, extracts attachments (filtered by
+type), creates per-email subfolders with a metadata.yml, and generates a
+report.xlsx.
 
 Default: only extracts emails containing Excel attachments.
+Set file_types to empty to extract all.
 
 Usage:
-    python scripts/extract_msg_attachments.py
-    python scripts/extract_msg_attachments.py --file-types ".xlsx,.pdf"
-    python scripts/extract_msg_attachments.py --file-types "" (all types)
+    python scripts/process_msg_files.py
+    python scripts/process_msg_files.py --file-types ".xlsx,.pdf"
+    python scripts/process_msg_files.py --file-types "" (all types)
+    python scripts/process_msg_files.py --source-subdir Raw_Emails/inbox
 """
 
 import os
 import sys
 import glob
-from datetime import datetime
 from pathlib import Path
 
 # Ensure project root is on sys.path so 'lib' package resolves correctly.
@@ -38,17 +38,14 @@ def _write_excel_report(report_path: str, rows: list) -> bool:
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Attachments Report"
+    ws.title = "Extracted Attachments"
 
-    # Write headers
     headers = list(rows[0].keys())
     ws.append(headers)
 
-    # Write data
     for row in rows:
         ws.append([row.get(h, "") for h in headers])
 
-    # Auto-width columns
     for col in ws.columns:
         max_len = max(len(str(cell.value or "")) for cell in col)
         ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 50)
@@ -65,7 +62,7 @@ def _write_metadata(folder_path: str, msg) -> None:
         "cc": msg.cc or "",
         "subject": msg.subject or "",
         "date": str(msg.date or ""),
-        "body": (msg.body or "")[:2000],  # Truncate very long bodies
+        "body": (msg.body or "")[:2000],
     }
 
     metadata_path = os.path.join(folder_path, "metadata.yml")
@@ -73,7 +70,7 @@ def _write_metadata(folder_path: str, msg) -> None:
         yaml.dump(metadata, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
 
-def extract_msg_attachments(config):
+def process_msg_files(config):
     source_subdir, dest_subdir, file_types = unpack_config(
         config, "source_subdir=Raw_Emails", "dest_subdir=Emails_With_Attachments", "file_types"
     )
@@ -99,14 +96,13 @@ def extract_msg_attachments(config):
         print(f"Source directory does not exist: {source_dir}")
         sys.exit(1)
 
-    # Find all .msg files recursively
     msg_files = glob.glob(os.path.join(source_dir, "**", "*.msg"), recursive=True)
 
     if not msg_files:
         print(f"No .msg files found in: {source_dir}")
         return
 
-    print(f"Extracting attachments from .msg files in: {source_dir}")
+    print(f"Processing .msg files from: {source_dir}")
     if ext_filter:
         print(f"  File type filter: {ext_filter}")
     else:
@@ -151,10 +147,7 @@ def extract_msg_attachments(config):
         safe_subject = sanitize_filename(subject)
         try:
             msg_date = msg.date
-            if msg_date:
-                date_str = msg_date.strftime("%Y%m%d_%H%M%S")
-            else:
-                date_str = "00000000_000000"
+            date_str = msg_date.strftime("%Y%m%d_%H%M%S") if msg_date else "00000000_000000"
         except Exception:
             date_str = "00000000_000000"
 
@@ -166,12 +159,11 @@ def extract_msg_attachments(config):
         try:
             _write_metadata(subfolder, msg)
         except Exception as e:
-            print(f"  Warning: could not write metadata for {subfolder_name}: {e}")
+            print(f"  Warning: metadata failed for {subfolder_name}: {e}")
 
         for filename, att in valid_attachments:
             output_path = os.path.join(subfolder, filename)
 
-            # Handle duplicates
             if os.path.exists(output_path):
                 base, ext = os.path.splitext(filename)
                 counter = 1
@@ -183,7 +175,6 @@ def extract_msg_attachments(config):
                 with open(output_path, "wb") as f:
                     f.write(att.data)
                 total_attachments += 1
-
                 print(f"  Saved: {subfolder_name}/{filename}")
 
                 report.append({
@@ -201,13 +192,12 @@ def extract_msg_attachments(config):
     if _write_excel_report(report_path, report):
         print(f"\nReport saved to: {report_path}")
 
-    print(f"\nDone. {msgs_with_attachments} email(s) with attachments, "
-          f"{total_attachments} file(s) extracted to {dest_dir}")
+    print(f"\nDone. {msgs_with_attachments} email(s), {total_attachments} attachment(s) extracted.")
 
 
 if __name__ == "__main__":
     config = parse_task_args(
-        description="Extract attachments from .msg files into Emails_With_Attachments.",
-        default_task="extract_msg_attachments",
+        description="Process .msg files and extract attachments with metadata.",
+        default_task="process_msg_files",
     )
-    extract_msg_attachments(config)
+    process_msg_files(config)

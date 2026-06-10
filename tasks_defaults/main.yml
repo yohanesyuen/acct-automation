@@ -1,8 +1,0 @@
-# Main task config for extracting Excel from .msg files.
-# Copy to tasks/ and customize for your environment.
-
-root: "C:\\path\\to\\output"
-
-# Subdirectories (constructed from root)
-attachments_subdir: "Attachments"
-excel_subdir: "Excel_Files"

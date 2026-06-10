@@ -100,6 +100,6 @@ def search_excel_content(config):
 if __name__ == "__main__":
     config = parse_task_args(
         description="Search Excel attachments for GR numbers in cell content.",
-        default_task="extract_grn_search_content",
+        default_task="search_excel_content",
     )
     search_excel_content(config)

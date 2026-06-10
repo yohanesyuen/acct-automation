@@ -1,17 +1,22 @@
 """
-Extract attachments from emails matching sender addresses and keyword criteria.
+Extract attachments from Outlook emails with flexible filtering.
 
-An email passes the filter if:
-  - It is from any of the specified senders, AND
-  - (the body/subject contains any keyword OR any attachment filename contains any keyword)
+Combines the functionality of extract_grn, extract_grn_emails, and the
+original extract_attachments into a single configurable script.
 
-If no keywords are specified, all attachments from matching senders are saved.
-All attachments from a matching email are saved.
+Filtering criteria:
+  - Sender(s): email must be from any specified sender
+  - Keywords: body/subject OR any attachment filename must match
+  - File types: only save attachments matching these extensions
+  - Folder: search inbox or sent items
+
+Optionally saves the email itself as .msg alongside attachments.
 
 Usage:
     python scripts/extract_attachments.py
     python scripts/extract_attachments.py --sender-email "alice@example.com,bob@example.com"
     python scripts/extract_attachments.py --keyword "GRN,Invoice"
+    python scripts/extract_attachments.py --save-msg true
 """
 
 import os
@@ -22,7 +27,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib.outlook import (
-    get_outlook_inbox,
     get_outlook_folder,
     filter_emails,
     iter_attachments,
@@ -39,6 +43,7 @@ def extract_attachments(config):
     )
     output_folder = get_output_dir(config, config.get("attachments_subdir", "Attachments"))
     report_path = get_report_path(config, config.get("report_file", "Attachments_Report.csv"))
+    save_msg = str(config.get("save_msg", "false")).lower() in ("true", "1", "yes")
 
     # Normalize keyword to a list
     if keyword is None or keyword == []:
@@ -58,9 +63,8 @@ def extract_attachments(config):
     if ext_filter:
         ext_filter = [e.lower() for e in ext_filter]
 
-    inbox = get_outlook_folder(config.get("folder", "inbox"))
-    # Filter by sender only — keyword check includes body + attachment filenames
-    emails = filter_emails(inbox, sender_email=sender_email, keyword=None, verbose=True)
+    folder = get_outlook_folder(config.get("folder", "inbox"))
+    emails = filter_emails(folder, sender_email=sender_email, keyword=None, verbose=True)
 
     senders_display = sender_email if isinstance(sender_email, list) else [sender_email or "all"]
     print(f"Extracting attachments from: {', '.join(senders_display)}")
@@ -68,27 +72,27 @@ def extract_attachments(config):
         print(f"  Keyword filter (body or filename): {keyword_list}")
     if ext_filter:
         print(f"  File type filter: {ext_filter}")
+    if save_msg:
+        print(f"  Also saving .msg files")
     print(f"  Output: {output_folder}\n")
 
     report = []
-    emails_checked = 0
+    emails_processed = set()  # Track which emails we've saved .msg for
     keyword_body_matches = 0
     keyword_filename_matches = 0
+    keyword_skipped = 0
 
     for info in iter_attachments(emails):
-        # If keywords specified, the email must match:
-        #   body/subject contains any keyword OR any attachment filename contains any keyword
+        # Keyword filter: body/subject contains keyword OR any attachment filename matches
         if keyword_list:
             try:
                 parent_email = info.attachment_ref.Parent
                 subject_lower = (parent_email.Subject or "").lower()
                 body_lower = (parent_email.Body or "").lower()
 
-                # Check body/subject
                 body_match = any(k.lower() in subject_lower or k.lower() in body_lower
                                  for k in keyword_list)
 
-                # Check attachment filenames
                 filename_match = False
                 if not body_match:
                     for i in range(1, parent_email.Attachments.Count + 1):
@@ -102,41 +106,48 @@ def extract_attachments(config):
                 elif filename_match:
                     keyword_filename_matches += 1
                 else:
-                    emails_checked += 1
-                    if emails_checked <= 5:
-                        print(f"  [keyword] SKIP: \"{(parent_email.Subject or '')[:50]}\" "
-                              f"(attachments: {', '.join(a.FileName for a in parent_email.Attachments)})")
+                    keyword_skipped += 1
+                    if keyword_skipped <= 5:
+                        print(f"  [skip] \"{(parent_email.Subject or '')[:50]}\"")
                     continue
             except Exception as e:
-                print(f"  [keyword] ERROR checking email: {e}")
+                print(f"  [error] {e}")
                 continue
 
-        new_filename = info.filename
-
-        # File type filter — skip attachments that don't match
+        # File type filter
         if ext_filter:
-            file_ext = os.path.splitext(new_filename)[1].lower()
+            file_ext = os.path.splitext(info.filename)[1].lower()
             if file_ext not in ext_filter:
                 continue
 
         # Create per-email subfolder: <sanitized_subject>_<YYYYMMDD_HHMMSS>/
         safe_subject = sanitize_filename(info.email_subject)
         date_str = info.received_time.strftime("%Y%m%d_%H%M%S")
-        subfolder = os.path.join(output_folder, f"{safe_subject}_{date_str}")
+        subfolder_name = f"{safe_subject}_{date_str}"
+        subfolder = os.path.join(output_folder, subfolder_name)
         os.makedirs(subfolder, exist_ok=True)
-        dest_path = os.path.join(subfolder, new_filename)
+
+        # Save .msg if requested (once per email)
+        if save_msg and subfolder_name not in emails_processed:
+            try:
+                msg_path = os.path.join(subfolder, f"{safe_subject}_{date_str}.msg")
+                info.attachment_ref.Parent.SaveAs(msg_path, 3)
+                emails_processed.add(subfolder_name)
+            except Exception:
+                pass
+
+        dest_path = os.path.join(subfolder, info.filename)
 
         try:
             save_attachment(info.attachment_ref, dest_path)
             print(f"  Saved: {info.filename} (from: {info.email_sender})")
 
             report.append({
-                "FileName": new_filename,
-                "OriginalFileName": info.filename,
+                "FileName": info.filename,
                 "EmailSubject": info.email_subject,
                 "SenderEmail": info.email_sender,
                 "ReceivedDate": str(info.received_time),
-                "SubFolder": f"{safe_subject}_{date_str}",
+                "SubFolder": subfolder_name,
                 "FilePath": dest_path,
             })
         except Exception as e:
@@ -146,16 +157,15 @@ def extract_attachments(config):
         print(f"\nReport saved to: {report_path}")
 
     if keyword_list:
-        print(f"\n  [keyword] Summary: body/subject matches={keyword_body_matches}, "
-              f"filename matches={keyword_filename_matches}, "
-              f"no match skipped={emails_checked}")
+        print(f"\n  [filter] body/subject={keyword_body_matches}, "
+              f"filename={keyword_filename_matches}, skipped={keyword_skipped}")
 
     print(f"\nDone. {len(report)} attachment(s) saved to {output_folder}")
 
 
 if __name__ == "__main__":
     config = parse_task_args(
-        description="Extract all attachments from emails matching sender address(es).",
+        description="Extract attachments from Outlook emails.",
         default_task="extract_attachments",
     )
     extract_attachments(config)

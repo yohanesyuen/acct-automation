@@ -1,23 +1,27 @@
-# Extract attachments from emails matching sender address(es) and keyword criteria.
+# Extract attachments from Outlook emails with flexible filtering.
 # Copy to tasks/ and customize for your environment.
 
 root: "C:\\path\\to\\output"
 
-# Outlook folder to search: "inbox" or "sent" (default: inbox)
+# Outlook folder to search: "inbox" or "sent"
 folder: "inbox"
 
-sender_email:
-  - "sender@example.com"
+# Sender filter — list of email addresses (any match passes)
+# Leave as empty list to skip sender filtering
+sender_email: []
 
-# Keyword filter — list of keywords to match in subject or body (any match passes)
-# Leave as empty list to disable keyword filtering
+# Keyword filter — matches body/subject OR attachment filenames
+# Leave as empty list to skip keyword filtering
 keyword: []
 
-# File type filter — list of extensions to save (e.g. [".xlsx", ".pdf"])
+# File type filter — only save attachments with these extensions
 # Leave as empty list to save all file types
 file_types: []
 
-# Subdirectories (constructed from root)
+# Save email as .msg alongside attachments
+save_msg: false
+
+# Output subdirectory (under root)
 attachments_subdir: "Attachments"
 
 # Report filename (placed under root)

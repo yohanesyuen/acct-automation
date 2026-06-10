@@ -20,11 +20,8 @@ TASK_DISPLAY_NAMES = {
     "collect_excel": "Collect Excel from Attachments",
     "dump_emails": "Download Emails (by Date)",
     "extract_attachments": "Extract Attachments (Outlook)",
-    "extract_excel_from_msg": "Extract Excel from .msg Files",
-    "extract_grn": "Extract GRN Excel (Outlook)",
-    "extract_grn_emails": "Extract GRN Emails (Outlook)",
-    "extract_msg_attachments": "Extract Attachments from .msg Files",
     "filter_by_contacts": "Filter Emails by Contacts",
+    "process_msg_files": "Process .msg Files (Extract Attachments)",
     "search_excel_content": "Search Excel Content for GR Numbers",
 }
 
