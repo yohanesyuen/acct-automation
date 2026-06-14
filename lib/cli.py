@@ -101,7 +101,7 @@ def _get_script_entry_function(module, script_name: str):
     return None
 
 
-def run_script(script_name: str, argv: list = None):
+def run_script(script_name: str, argv: list = None, no_gui: bool = False):
     """Load and run a script by name, passing argv for parse_task_args."""
     if argv:
         sys.argv = [f"scripts/{script_name}.py"] + argv
@@ -120,19 +120,27 @@ def run_script(script_name: str, argv: list = None):
         print(f"Error: no entry function found in scripts/{script_name}.py")
         sys.exit(1)
 
-    from lib.task_config import parse_task_args
+    # If the entry function takes no parameters, run it directly without the config GUI.
+    sig = inspect.signature(entry_fn)
+    params = list(sig.parameters.keys())
 
-    description = ""
-    if module.__doc__:
-        description = module.__doc__.strip().split("\n")[0]
+    if not params:
+        entry_fn()
+    else:
+        from lib.task_config import parse_task_args
 
-    config = parse_task_args(
-        description=description or script_name.replace("_", " ").title(),
-        default_task=script_name,
-        argv=argv,
-    )
+        description = ""
+        if module.__doc__:
+            description = module.__doc__.strip().split("\n")[0]
 
-    entry_fn(config)
+        config = parse_task_args(
+            description=description or script_name.replace("_", " ").title(),
+            default_task=script_name,
+            argv=argv,
+            no_gui=no_gui,
+        )
+
+        entry_fn(config)
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +189,7 @@ def cmd_run(args):
         print(f"Available: {available}")
         sys.exit(1)
 
-    run_script(script_name, args.script_args or [])
+    run_script(script_name, args.script_args or [], no_gui=getattr(args, "no_gui", False))
 
 
 def cmd_commit(args):
@@ -274,6 +282,13 @@ def build_parser() -> argparse.ArgumentParser:
         "script_args",
         nargs=argparse.REMAINDER,
         help="Additional arguments passed through to the script.",
+    )
+    sp_run.add_argument(
+        "--no-gui",
+        dest="no_gui",
+        action="store_true",
+        default=False,
+        help="Skip the GUI config dialog and use YAML + CLI values directly.",
     )
     sp_run.set_defaults(func=cmd_run)
 

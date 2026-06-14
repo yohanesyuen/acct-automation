@@ -187,6 +187,7 @@ def parse_task_args(
     default_task: str,
     config_keys: Optional[List[str]] = None,
     argv: Optional[List[str]] = None,
+    no_gui: bool = False,
 ) -> Dict[str, Any]:
     """
     Parse CLI arguments, merge with YAML, show GUI, and auto-save changes.
@@ -194,7 +195,7 @@ def parse_task_args(
     Flow:
     1. Load YAML (or generate from defaults if missing/invalid)
     2. Parse CLI args and merge overrides
-    3. Show GUI form pre-populated with merged values
+    3. Show GUI form pre-populated with merged values (skipped if no_gui=True)
     4. Save final config back to YAML
 
     Args:
@@ -202,6 +203,7 @@ def parse_task_args(
         default_task: Default task config name.
         config_keys: Optional list of keys to expose. If None, uses all.
         argv: Optional argument list (defaults to sys.argv[1:]).
+        no_gui: If True, skip the GUI dialog and use YAML + CLI values directly.
 
     Returns:
         Final config dictionary (after GUI confirmation).
@@ -260,9 +262,11 @@ def parse_task_args(
                 else:
                     config[key] = cli_value
 
-    # Show GUI form pre-populated with merged config
-    from lib.gui_config import gui_task_args
-    final_config = gui_task_args(description, task_name, config_keys, prefilled_config=config)
+    if no_gui:
+        final_config = config
+    else:
+        from lib.gui_config import gui_task_args
+        final_config = gui_task_args(description, task_name, config_keys, prefilled_config=config)
 
     # Auto-save the final config back to YAML
     save_task_config(task_name, final_config)
