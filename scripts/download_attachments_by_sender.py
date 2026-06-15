@@ -7,7 +7,8 @@ Filtering criteria:
   - File types: only save attachments matching these extensions
   - Folder: search inbox or sent items
 
-Optionally saves the email itself as .msg alongside attachments.
+Always writes a metadata.yml per email subfolder (compatible with
+filter_by_contacts). Optionally also saves the raw .msg file.
 
 Usage:
     python scripts/download_attachments_by_sender.py
@@ -20,8 +21,9 @@ import os
 import sys
 from pathlib import Path
 
-# Ensure project root is on sys.path so 'lib' package resolves correctly.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import yaml
 
 from lib.outlook import (
     get_outlook_folder,
@@ -34,7 +36,31 @@ from lib.task_config import parse_task_args, unpack_config, get_output_dir, get_
 from lib.utils import sanitize_filename
 
 
-def extract_attachments(config):
+def _write_metadata_yml(subfolder: str, email_item) -> None:
+    """Write metadata.yml from an Outlook COM MailItem (same schema as process_msg_files)."""
+    try:
+        received = email_item.ReceivedTime
+        date_str = (
+            f"{received.year}-{received.month:02d}-{received.day:02d} "
+            f"{received.hour:02d}:{received.minute:02d}:{received.second:02d}"
+        )
+    except Exception:
+        date_str = ""
+
+    metadata = {
+        "from": getattr(email_item, "SenderEmailAddress", "") or "",
+        "to": getattr(email_item, "To", "") or "",
+        "cc": getattr(email_item, "CC", "") or "",
+        "subject": getattr(email_item, "Subject", "") or "",
+        "date": date_str,
+        "body": (getattr(email_item, "Body", "") or "")[:2000],
+    }
+
+    with open(os.path.join(subfolder, "metadata.yml"), "w", encoding="utf-8") as f:
+        yaml.dump(metadata, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+
+def download_attachments_by_sender(config):
     sender_email, keyword, file_types = unpack_config(
         config, "sender_email", "keyword", "file_types"
     )
@@ -64,9 +90,9 @@ def extract_attachments(config):
     emails = filter_emails(folder, sender_email=sender_email, keyword=None, verbose=True)
 
     senders_display = sender_email if isinstance(sender_email, list) else [sender_email or "all"]
-    print(f"Extracting attachments from: {', '.join(senders_display)}")
+    print(f"Downloading attachments from: {', '.join(senders_display)}")
     if keyword_list:
-        print(f"  Keyword filter (body or filename): {keyword_list}")
+        print(f"  Keyword filter (subject, body, or filename): {keyword_list}")
     if ext_filter:
         print(f"  File type filter: {ext_filter}")
     if save_msg:
@@ -74,13 +100,13 @@ def extract_attachments(config):
     print(f"  Output: {output_folder}\n")
 
     report = []
-    emails_processed = set()  # Track which emails we've saved .msg for
+    subfolders_initialized = set()  # Track which email subfolders have been set up
     keyword_body_matches = 0
     keyword_filename_matches = 0
     keyword_skipped = 0
 
     for info in iter_attachments(emails):
-        # Keyword filter: body/subject contains keyword OR any attachment filename matches
+        # Keyword filter: subject/body OR any attachment filename must match
         if keyword_list:
             try:
                 parent_email = info.attachment_ref.Parent
@@ -124,14 +150,21 @@ def extract_attachments(config):
         subfolder = os.path.join(output_folder, subfolder_name)
         os.makedirs(subfolder, exist_ok=True)
 
-        # Save .msg if requested (once per email)
-        if save_msg and subfolder_name not in emails_processed:
+        # On first visit to this email's subfolder: write metadata.yml and optionally .msg
+        if subfolder_name not in subfolders_initialized:
             try:
-                msg_path = os.path.join(subfolder, f"{safe_subject}_{date_str}.msg")
-                info.attachment_ref.Parent.SaveAs(msg_path, 3)
-                emails_processed.add(subfolder_name)
-            except Exception:
-                pass
+                _write_metadata_yml(subfolder, info.attachment_ref.Parent)
+            except Exception as e:
+                print(f"  [warn] metadata failed for {subfolder_name}: {e}")
+
+            if save_msg:
+                try:
+                    msg_path = os.path.join(subfolder, f"{safe_subject}_{date_str}.msg")
+                    info.attachment_ref.Parent.SaveAs(msg_path, 3)
+                except Exception:
+                    pass
+
+            subfolders_initialized.add(subfolder_name)
 
         dest_path = os.path.join(subfolder, info.filename)
 
@@ -165,4 +198,4 @@ if __name__ == "__main__":
         description="Download attachments from Outlook emails by sender.",
         default_task="download_attachments_by_sender",
     )
-    extract_attachments(config)
+    download_attachments_by_sender(config)

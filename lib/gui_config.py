@@ -25,6 +25,7 @@ TASK_DISPLAY_NAMES = {
     "collect_excel": "Collect Excel from Attachments",
     "dump_emails": "Download Emails (by Date)",
     "download_attachments_by_sender": "Download Attachments by Sender (Outlook)",
+    "download_invoice_attachments": "Download Invoice Attachments (Outlook)",
     "filter_by_contacts": "Filter Emails by Contacts",
     "process_msg_files": "Process .msg Files (Extract Attachments)",
     "search_excel_content": "Search Excel Content for GR Numbers",

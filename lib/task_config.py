@@ -32,6 +32,16 @@ TASK_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "attachments_subdir": "ATTACHMENTS",
         "report_file": "Attachments_Report.csv",
     },
+    "download_invoice_attachments": {
+        "root": "OUTPUT_DIR",
+        "folder": "inbox",
+        "sender_email": [],
+        "keyword": ["inv", "invoice"],
+        "file_types": [],
+        "save_msg": False,
+        "attachments_subdir": "INVOICE_ATTACHMENTS",
+        "report_file": "Invoice_Attachments_Report.csv",
+    },
     "dump_emails": {
         "root": "OUTPUT_DIR",
         "after_date": "2025-01-01",
