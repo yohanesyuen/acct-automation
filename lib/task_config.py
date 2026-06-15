@@ -22,7 +22,7 @@ TASKS_DIR = PROJECT_ROOT / "tasks"
 # ---------------------------------------------------------------------------
 
 TASK_DEFAULTS: Dict[str, Dict[str, Any]] = {
-    "extract_attachments": {
+    "download_attachments_by_sender": {
         "root": "OUTPUT_DIR",
         "folder": "inbox",
         "sender_email": [],
@@ -73,6 +73,12 @@ TASK_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "exclude_term": [],
         "source_subdir": "EXCEL_FILES",
         "report_file": "Header_Analysis_Report.csv",
+    },
+    "extract_invoices": {
+        "root": "OUTPUT_DIR",
+        "uie_pdf": "PDF_PATH",
+        "lp_pdf": "PDF_PATH",
+        "mjm_pdf": "PDF_PATH",
     },
 }
 

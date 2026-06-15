@@ -1,8 +1,5 @@
 """
-Extract attachments from Outlook emails with flexible filtering.
-
-Combines the functionality of extract_grn, extract_grn_emails, and the
-original extract_attachments into a single configurable script.
+Download attachments from Outlook emails filtered by sender, keyword, and file type.
 
 Filtering criteria:
   - Sender(s): email must be from any specified sender
@@ -13,10 +10,10 @@ Filtering criteria:
 Optionally saves the email itself as .msg alongside attachments.
 
 Usage:
-    python scripts/extract_attachments.py
-    python scripts/extract_attachments.py --sender-email "alice@example.com,bob@example.com"
-    python scripts/extract_attachments.py --keyword "GRN,Invoice"
-    python scripts/extract_attachments.py --save-msg true
+    python scripts/download_attachments_by_sender.py
+    python scripts/download_attachments_by_sender.py --sender-email "alice@example.com,bob@example.com"
+    python scripts/download_attachments_by_sender.py --keyword "GRN,Invoice"
+    python scripts/download_attachments_by_sender.py --save-msg true
 """
 
 import os
@@ -165,7 +162,7 @@ def extract_attachments(config):
 
 if __name__ == "__main__":
     config = parse_task_args(
-        description="Extract attachments from Outlook emails.",
-        default_task="extract_attachments",
+        description="Download attachments from Outlook emails by sender.",
+        default_task="download_attachments_by_sender",
     )
     extract_attachments(config)

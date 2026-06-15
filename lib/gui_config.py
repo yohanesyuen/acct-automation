@@ -24,10 +24,11 @@ TASK_DISPLAY_NAMES = {
     "analyze_headers": "Analyze Excel Headers",
     "collect_excel": "Collect Excel from Attachments",
     "dump_emails": "Download Emails (by Date)",
-    "extract_attachments": "Extract Attachments (Outlook)",
+    "download_attachments_by_sender": "Download Attachments by Sender (Outlook)",
     "filter_by_contacts": "Filter Emails by Contacts",
     "process_msg_files": "Process .msg Files (Extract Attachments)",
     "search_excel_content": "Search Excel Content for GR Numbers",
+    "extract_invoices": "Extract Invoice Data (All Companies)",
 }
 
 
