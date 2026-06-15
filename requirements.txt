@@ -13,5 +13,13 @@ pandas
 pdfplumber
 PyMuPDF
 
-# Windows Runtime OCR (study/)
-winrt
+# Image preprocessing + OCR (study/)
+opencv-python
+pytesseract
+# Tesseract binary required separately:
+#   Windows : https://github.com/UB-Mannheim/tesseract/wiki
+#   conda   : conda install -c conda-forge tesseract
+
+# If switching to a DL-based extractor (easyocr, surya-ocr, python-doctr),
+# install CPU torch first so the .venv stays independent of the base XPU env:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
