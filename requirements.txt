@@ -1,0 +1,17 @@
+# Core dependencies
+extract-msg
+openpyxl
+PyYAML==6.0.3
+pywin32
+xlrd
+
+# Git integration
+pygit2
+
+# PDF processing (study/)
+pandas
+pdfplumber
+PyMuPDF
+
+# Windows Runtime OCR (study/)
+winrt

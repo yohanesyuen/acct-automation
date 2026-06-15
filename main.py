@@ -18,9 +18,30 @@ Usage:
 
 import importlib
 import inspect
+import os
 import pkgutil
 import sys
 from pathlib import Path
+
+
+def _check_venv() -> None:
+    """Warn if not running inside a dedicated virtual environment."""
+    in_venv = bool(os.environ.get("VIRTUAL_ENV"))
+    conda_env = os.environ.get("CONDA_DEFAULT_ENV", "")
+    in_named_conda = bool(conda_env) and conda_env.lower() != "base"
+    if in_venv or in_named_conda:
+        return
+    env_label = f"conda '{conda_env}'" if conda_env else "system Python"
+    print(
+        f"WARNING: running in {env_label} — activate the project venv first.\n"
+        "  PowerShell : .venv\\Scripts\\Activate.ps1\n"
+        "  bash/sh    : source .venv/Scripts/activate\n"
+        "  Create it  : python -m virtualenv .venv",
+        file=sys.stderr,
+    )
+
+
+_check_venv()
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
