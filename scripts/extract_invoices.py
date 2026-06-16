@@ -8,8 +8,9 @@ the CLI — to force a single vendor's extractor for every PDF.
 
 Extracted data is saved as CSV under the task root for later processing:
   - '<report_file>.csv': one row per PDF with the scalar invoice fields.
-  - '<report_file>_line_items.csv': line items in tidy/long format
-    (source_file, vendor, line_no, column, value).
+  - '<report_file>_line_items.csv': one row per line item per invoice
+    (source_file, vendor, line_no, then each vendor's line-item columns;
+    columns are the union across vendors, blank where not applicable).
 
 Usage:
     python scripts/extract_invoices.py
@@ -72,7 +73,7 @@ def _write_csv(path: str, fieldnames: list, rows: list) -> None:
         writer.writerows(rows)
 
 
-def _save_reports(config, summary_rows, field_keys, line_item_rows) -> None:
+def _save_reports(config, summary_rows, field_keys, line_item_rows, line_item_cols) -> None:
     """Persist extracted fields and line items as CSVs under the task root."""
     if not summary_rows:
         print("\nNothing extracted — no report written.")
@@ -89,7 +90,7 @@ def _save_reports(config, summary_rows, field_keys, line_item_rows) -> None:
         line_items_path = get_report_path(config, f"{stem}_line_items.csv")
         _write_csv(
             line_items_path,
-            ["source_file", "vendor", "line_no", "column", "value"],
+            ["source_file", "vendor", "line_no"] + line_item_cols,
             line_item_rows,
         )
         print(f"Saved line items    → {line_items_path}")
@@ -123,7 +124,8 @@ def extract_invoices(config):
 
     summary_rows = []     # one dict per PDF (scalar invoice fields)
     field_keys = []       # ordered union of scalar field names across PDFs
-    line_item_rows = []   # tidy/long format: one dict per line-item cell
+    line_item_rows = []   # one dict per line item per invoice
+    line_item_cols = []   # ordered union of line-item column names across PDFs
 
     for pdf_path in pdfs:
         print(f"\n{'='*60}")
@@ -156,17 +158,15 @@ def extract_invoices(config):
 
         if line_items:
             headers, *rows = line_items
+            for col in headers:
+                if col not in line_item_cols:
+                    line_item_cols.append(col)
             for line_no, row in enumerate(rows, 1):
-                for col, val in zip(headers, row):
-                    line_item_rows.append({
-                        "source_file": pdf_path.name,
-                        "vendor": label,
-                        "line_no": line_no,
-                        "column": col,
-                        "value": val,
-                    })
+                item = {"source_file": pdf_path.name, "vendor": label, "line_no": line_no}
+                item.update(dict(zip(headers, row)))
+                line_item_rows.append(item)
 
-    _save_reports(config, summary_rows, field_keys, line_item_rows)
+    _save_reports(config, summary_rows, field_keys, line_item_rows, line_item_cols)
 
 
 if __name__ == '__main__':
