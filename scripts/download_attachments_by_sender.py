@@ -30,6 +30,7 @@ from lib.outlook import (
     filter_emails,
     iter_attachments,
     save_attachment,
+    gui_select_outlook_folder,
 )
 from lib.reporting import write_csv_report
 from lib.task_config import parse_task_args, unpack_config, get_output_dir, get_report_path
@@ -86,8 +87,18 @@ def download_attachments_by_sender(config):
     if ext_filter:
         ext_filter = [e.lower() for e in ext_filter]
 
-    folder = get_outlook_folder(config.get("folder", "inbox"))
-    emails = filter_emails(folder, sender_email=sender_email, keyword=None, verbose=True)
+    if config.get("_no_gui"):
+        folder = get_outlook_folder(config.get("folder", "inbox"))
+    else:
+        folder = gui_select_outlook_folder("Select Folder to Search")
+        if folder is None:
+            # Cancelled — fall back to configured folder
+            folder = get_outlook_folder(config.get("folder", "inbox"))
+
+    emails = filter_emails(
+        folder, sender_email=sender_email, keyword=None,
+        verbose=True, include_subfolders=True,
+    )
 
     senders_display = sender_email if isinstance(sender_email, list) else [sender_email or "all"]
     print(f"Downloading attachments from: {', '.join(senders_display)}")

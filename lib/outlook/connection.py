@@ -13,6 +13,16 @@ _FOLDER_INBOX = 6
 _FOLDER_SENT_ITEMS = 5
 
 
+def iter_subfolders(folder):
+    """Recursively yield a folder and all of its subfolders (depth-first)."""
+    yield folder
+    try:
+        for i in range(1, folder.Folders.Count + 1):
+            yield from iter_subfolders(folder.Folders.Item(i))
+    except Exception:
+        pass
+
+
 def get_outlook_inbox():
     """
     Connect to the running Outlook instance and return the Inbox folder.
