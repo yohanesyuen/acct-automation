@@ -1,15 +1,15 @@
 """
-Extract invoice data from PDFs for all configured companies.
+Extract invoice data from PDFs in a folder.
 
-Two modes:
-  1. Folder scan (recommended): set 'pdf_dir' to a folder. PDFs are discovered
-     recursively and the company is guessed automatically from content.
-  2. Per-company: set 'uie_pdf', 'lp_pdf', and/or 'mjm_pdf' to specific PDF paths.
+PDFs are discovered recursively under 'pdf_dir'. By default the vendor is
+auto-detected from each PDF's content ('auto_detect_vendor': True). Disable
+auto-detection — via the GUI checkbox, the YAML, or by passing '--vendor' on
+the CLI — to force a single vendor's extractor for every PDF.
 
 Usage:
     python scripts/extract_invoices.py
     python scripts/extract_invoices.py --no-gui --pdf-dir /path/to/invoices
-    python scripts/extract_invoices.py --no-gui --uie-pdf path/to/uie.pdf
+    python scripts/extract_invoices.py --no-gui --pdf-dir /path --vendor "MJM Services"
 """
 
 import os
@@ -27,17 +27,15 @@ from lib.extraction import (
 )
 from lib.task_config import parse_task_args
 
-COMPANIES = [
-    ('uie_pdf',  'UIE Industrial',  UIEIndustrialExtractor),
-    ('lp_pdf',   'LP Construction', LPConstructionExtractor),
-    ('mjm_pdf',  'MJM Services',    MJMServicesExtractor),
-]
-
-_EXTRACTOR_LABELS = {
-    UIEIndustrialExtractor:  'UIE Industrial',
-    LPConstructionExtractor: 'LP Construction',
-    MJMServicesExtractor:    'MJM Services',
+# Vendor display name -> extractor class. Display names mirror the GUI dropdown
+# options in FIELD_TYPES['vendor'].
+VENDOR_EXTRACTORS = {
+    'UIE Industrial':  UIEIndustrialExtractor,
+    'LP Construction': LPConstructionExtractor,
+    'MJM Services':    MJMServicesExtractor,
 }
+
+_EXTRACTOR_LABELS = {cls: name for name, cls in VENDOR_EXTRACTORS.items()}
 
 
 def _print_result(result: dict) -> None:
@@ -62,58 +60,62 @@ def _print_result(result: dict) -> None:
 
 def extract_invoices(config):
     pdf_dir = (config.get("pdf_dir") or "").strip()
+    auto_detect = bool(config.get("auto_detect_vendor", True))
+    vendor = (config.get("vendor") or "").strip()
 
-    if pdf_dir and os.path.isdir(pdf_dir):
-        # --- Folder scan mode ---
-        pdfs = list(find_pdfs(pdf_dir))
-        if not pdfs:
-            print(f"No PDF files found in: {pdf_dir}")
+    if not pdf_dir or not os.path.isdir(pdf_dir):
+        print(f"PDF directory not found: {pdf_dir or '(not set)'}")
+        return
+
+    # When auto-detection is off, force one vendor's extractor for every PDF.
+    forced_cls = None
+    if not auto_detect:
+        forced_cls = VENDOR_EXTRACTORS.get(vendor)
+        if forced_cls is None:
+            print(f"Unknown vendor: {vendor!r}. "
+                  f"Choose one of: {', '.join(VENDOR_EXTRACTORS)}.")
             return
 
-        print(f"Scanning {len(pdfs)} PDF(s) in {pdf_dir}\n")
+    pdfs = list(find_pdfs(pdf_dir))
+    if not pdfs:
+        print(f"No PDF files found in: {pdf_dir}")
+        return
 
-        for pdf_path in pdfs:
-            print(f"\n{'='*60}")
-            print(f"  {pdf_path.name}")
+    mode = "auto-detect" if auto_detect else f"forced vendor: {vendor}"
+    print(f"Scanning {len(pdfs)} PDF(s) in {pdf_dir} ({mode})\n")
 
-            extractor_cls = guess_extractor(str(pdf_path))
-            if extractor_cls is None:
-                print("  No matching extractor found — skipping.")
-                continue
+    for pdf_path in pdfs:
+        print(f"\n{'='*60}")
+        print(f"  {pdf_path.name}")
 
-            label = _EXTRACTOR_LABELS.get(extractor_cls, extractor_cls.__name__)
-            print(f"  Detected company: {label}")
-            print(f"{'='*60}")
+        extractor_cls = forced_cls or guess_extractor(str(pdf_path))
+        if extractor_cls is None:
+            print("  No matching extractor found — skipping.")
+            continue
 
-            try:
-                result = extractor_cls().extract(str(pdf_path))
-                _print_result(result)
-            except Exception as e:
-                print(f"  Error: {e}")
+        label = _EXTRACTOR_LABELS.get(extractor_cls, extractor_cls.__name__)
+        print(f"  Vendor: {label}")
+        print(f"{'='*60}")
 
-    else:
-        # --- Per-company mode ---
-        for pdf_key, label, extractor_cls in COMPANIES:
-            pdf_path = config.get(pdf_key, '')
-            if not pdf_path or not os.path.isfile(pdf_path):
-                print(f"\n  Skipping {label} — no PDF path configured.")
-                continue
-
-            print(f"\n{'='*60}")
-            print(f"  {label}")
-            print(f"{'='*60}")
-
-            try:
-                result = extractor_cls().extract(pdf_path)
-                _print_result(result)
-            except Exception as e:
-                print(f"  Error: {e}")
+        try:
+            result = extractor_cls().extract(str(pdf_path))
+            _print_result(result)
+        except Exception as e:
+            print(f"  Error: {e}")
 
 
 if __name__ == '__main__':
+    # Remember whether the vendor was explicitly passed before argv is consumed.
+    _vendor_on_cli = any(a == '--vendor' or a.startswith('--vendor=') for a in sys.argv[1:])
+
     config = parse_task_args(
-        description="Extract invoice data from PDFs for all companies.",
+        description="Extract invoice data from PDFs in a folder.",
         default_task="extract_invoices",
-        config_keys=['pdf_dir', 'uie_pdf', 'lp_pdf', 'mjm_pdf'],
+        config_keys=['pdf_dir', 'auto_detect_vendor', 'vendor'],
     )
+
+    # If the vendor was explicitly passed as a CLI arg, force it.
+    if _vendor_on_cli:
+        config['auto_detect_vendor'] = False
+
     extract_invoices(config)

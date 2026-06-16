@@ -44,6 +44,12 @@ def _get_field_type(key: str) -> str:
     return FIELD_TYPES.get(key, "text")
 
 
+def _get_condition(key: str):
+    """Return (controller_key, visible_when_value) for a conditional field, or None."""
+    from lib.task_config import CONDITIONAL_FIELDS
+    return CONDITIONAL_FIELDS.get(key)
+
+
 def _browse_folder(entry: tk.Entry) -> None:
     """Open a folder picker and set the entry value."""
     path = filedialog.askdirectory()
@@ -96,8 +102,9 @@ def gui_select_task() -> Optional[str]:
     """
     Show a dropdown to select which task script to run.
 
-    Runs git fetch on startup to check for updates. Shows a "Pull (N behind)"
-    button if the local branch is behind the remote.
+    Runs git fetch on startup to check for updates. If the local branch is
+    behind the remote, task selection is blocked and only a mandatory "Update"
+    button is shown until the user pulls.
 
     Returns:
         The script name (e.g. "extract_attachments"), or None if cancelled.
@@ -129,6 +136,72 @@ def gui_select_task() -> Optional[str]:
     root = tk.Tk()
     root.title("acct-automation — Select Task")
     root.resizable(False, False)
+
+    def on_pull():
+        """Pull latest changes from remote."""
+        try:
+            from lib.git_ops import get_repo, pull as git_pull
+            repo = get_repo()
+            pull_result = git_pull(repo)
+            if pull_result["updated"]:
+                # If pre_prompt_template.md changed, regenerate pre_prompt.md
+                if any("pre_prompt_template.md" in f for f in pull_result["changed_files"]):
+                    try:
+                        from main import generate_pre_prompt, OUTPUT_PATH
+                        content = generate_pre_prompt()
+                        OUTPUT_PATH.write_text(content, encoding="utf-8")
+                        messagebox.showinfo(
+                            "Pull Complete",
+                            "Updated to latest version.\npre_prompt.md regenerated.\nThe app will now restart."
+                        )
+                    except Exception:
+                        messagebox.showinfo("Pull Complete", "Updated to latest version.\nThe app will now restart.")
+                else:
+                    messagebox.showinfo("Pull Complete", "Updated to latest version.\nThe app will now restart.")
+                root.destroy()
+                result["selected"] = "__restart__"
+            else:
+                messagebox.showinfo("Pull", "Already up to date.")
+        except Exception as e:
+            messagebox.showerror("Pull Failed", str(e))
+
+    # ------------------------------------------------------------------
+    # Forced update: if the local branch is behind the remote, block task
+    # selection entirely and present only a Pull button. Running against a
+    # stale copy risks diverging configs and missing fixes, so the update is
+    # mandatory before any task can run.
+    # ------------------------------------------------------------------
+    if commits_behind > 0:
+        header = ttk.Label(
+            root, text="⬇ Update required", font=("Segoe UI", 12, "bold")
+        )
+        header.pack(padx=30, pady=(20, 10))
+
+        msg = (
+            f"Your copy is {commits_behind} commit(s) behind the latest version.\n\n"
+            "You must update before running any task. This keeps task configs,\n"
+            "extractors, and bug fixes in sync with the shared repository and\n"
+            "prevents errors from running against an outdated copy.\n\n"
+            "Click Update to pull the latest changes. The app will restart."
+        )
+        ttk.Label(root, text=msg, justify="center").pack(padx=30, pady=(0, 15))
+
+        btn_frame = ttk.Frame(root)
+        btn_frame.pack(pady=(0, 20))
+        pull_btn = ttk.Button(
+            btn_frame, text=f"⬇ Update now ({commits_behind} behind)",
+            command=on_pull, width=26,
+        )
+        pull_btn.pack()
+
+        # Center window
+        root.update_idletasks()
+        x = (root.winfo_screenwidth() // 2) - (root.winfo_width() // 2)
+        y = (root.winfo_screenheight() // 2) - (root.winfo_height() // 2)
+        root.geometry(f"+{x}+{y}")
+
+        root.mainloop()
+        return result["selected"]
 
     # Header
     header = ttk.Label(root, text="Select a task to run:", font=("Segoe UI", 11, "bold"))
@@ -173,42 +246,6 @@ def gui_select_task() -> Optional[str]:
     def on_cancel():
         result["selected"] = None
         root.destroy()
-
-    def on_pull():
-        """Pull latest changes from remote."""
-        try:
-            from lib.git_ops import get_repo, pull as git_pull
-            repo = get_repo()
-            pull_result = git_pull(repo)
-            if pull_result["updated"]:
-                # If pre_prompt_template.md changed, regenerate pre_prompt.md
-                if any("pre_prompt_template.md" in f for f in pull_result["changed_files"]):
-                    try:
-                        from main import generate_pre_prompt, OUTPUT_PATH
-                        content = generate_pre_prompt()
-                        OUTPUT_PATH.write_text(content, encoding="utf-8")
-                        messagebox.showinfo(
-                            "Pull Complete",
-                            "Updated to latest version.\npre_prompt.md regenerated.\nThe app will now restart."
-                        )
-                    except Exception:
-                        messagebox.showinfo("Pull Complete", "Updated to latest version.\nThe app will now restart.")
-                else:
-                    messagebox.showinfo("Pull Complete", "Updated to latest version.\nThe app will now restart.")
-                root.destroy()
-                result["selected"] = "__restart__"
-            else:
-                messagebox.showinfo("Pull", "Already up to date.")
-        except Exception as e:
-            messagebox.showerror("Pull Failed", str(e))
-
-    # Pull button (only show if behind)
-    if commits_behind > 0:
-        pull_btn = ttk.Button(
-            btn_frame, text=f"⬇ Pull ({commits_behind} behind)",
-            command=on_pull, width=20,
-        )
-        pull_btn.pack(side=tk.LEFT, padx=10)
 
     select_btn = ttk.Button(btn_frame, text="Next →", command=on_select, width=12)
     select_btn.pack(side=tk.LEFT, padx=10)
@@ -288,7 +325,10 @@ def gui_task_args(
     task_label = ttk.Label(window, text=f"Config: tasks/{default_task}.yml", foreground="gray")
     task_label.grid(row=1, column=0, columnspan=3, padx=10, pady=(0, 10), sticky="w")
 
-    entries = {}
+    entries = {}            # key -> Entry / Combobox widget (text-valued fields)
+    bool_vars = {}          # key -> tk.BooleanVar (checkbox fields)
+    row_widgets = {}        # key -> list of widgets on that row (for show/hide)
+    row_indices = {}        # key -> grid row index
     row_idx = 2
 
     for key in all_keys:
@@ -299,36 +339,83 @@ def gui_task_args(
         display_name = key.replace("_", " ").title()
         label = ttk.Label(window, text=display_name + ":")
         label.grid(row=row_idx, column=0, padx=(10, 5), pady=3, sticky="e")
+        widgets = [label]
 
-        # Convert list values to comma-separated display
-        if isinstance(value, list):
-            display_value = ", ".join(str(v) for v in value)
-        elif isinstance(value, bool):
-            display_value = str(value).lower()
+        if field_type == "checkbox":
+            var = tk.BooleanVar(value=bool(value))
+            bool_vars[key] = var
+            check = ttk.Checkbutton(window, variable=var)
+            check.grid(row=row_idx, column=1, padx=5, pady=3, sticky="w")
+            widgets.append(check)
+
+        elif field_type.startswith("dropdown:"):
+            options = [o.strip() for o in field_type.split(":", 1)[1].split(",")]
+            combo = ttk.Combobox(window, width=57, values=options, state="readonly")
+            current = str(value) if value not in (None, "") else (options[0] if options else "")
+            combo.set(current)
+            combo.grid(row=row_idx, column=1, padx=5, pady=3, sticky="ew")
+            entries[key] = combo
+            widgets.append(combo)
+
         else:
-            display_value = str(value) if value is not None else ""
+            # Convert list values to comma-separated display
+            if isinstance(value, list):
+                display_value = ", ".join(str(v) for v in value)
+            elif isinstance(value, bool):
+                display_value = str(value).lower()
+            else:
+                display_value = str(value) if value is not None else ""
 
-        entry = ttk.Entry(window, width=60)
-        entry.insert(0, display_value)
-        entry.grid(row=row_idx, column=1, padx=5, pady=3, sticky="ew")
-        entries[key] = entry
+            entry = ttk.Entry(window, width=60)
+            entry.insert(0, display_value)
+            entry.grid(row=row_idx, column=1, padx=5, pady=3, sticky="ew")
+            entries[key] = entry
+            widgets.append(entry)
 
-        # Highlight placeholder values
-        if field_type == "directory" and _is_placeholder(display_value):
-            entry.configure(style="Required.TEntry")
+            # Highlight placeholder values
+            if field_type == "directory" and _is_placeholder(display_value):
+                entry.configure(style="Required.TEntry")
 
-        # Add appropriate browse button based on field type
-        if field_type == "directory":
-            browse_btn = ttk.Button(window, text="Browse…", width=8,
-                                    command=lambda e=entry: _browse_folder(e))
-            browse_btn.grid(row=row_idx, column=2, padx=(0, 10), pady=3)
-        elif field_type.startswith("file_save:"):
-            extensions = field_type.split(":", 1)[1]
-            browse_btn = ttk.Button(window, text="Browse…", width=8,
-                                    command=lambda e=entry, ext=extensions: _browse_file_save(e, ext))
-            browse_btn.grid(row=row_idx, column=2, padx=(0, 10), pady=3)
+            # Add appropriate browse button based on field type
+            if field_type == "directory":
+                browse_btn = ttk.Button(window, text="Browse…", width=8,
+                                        command=lambda e=entry: _browse_folder(e))
+                browse_btn.grid(row=row_idx, column=2, padx=(0, 10), pady=3)
+                widgets.append(browse_btn)
+            elif field_type.startswith("file_save:"):
+                extensions = field_type.split(":", 1)[1]
+                browse_btn = ttk.Button(window, text="Browse…", width=8,
+                                        command=lambda e=entry, ext=extensions: _browse_file_save(e, ext))
+                browse_btn.grid(row=row_idx, column=2, padx=(0, 10), pady=3)
+                widgets.append(browse_btn)
 
+        row_widgets[key] = widgets
+        row_indices[key] = row_idx
         row_idx += 1
+
+    # --- Dynamic conditional visibility ---
+    # A field with a CONDITIONAL_FIELDS entry is only shown when its controlling
+    # field holds the configured value. When the controller is a checkbox, wire
+    # its toggle to update visibility live.
+    def _apply_visibility():
+        for dep_key in all_keys:
+            cond = _get_condition(dep_key)
+            if cond is None:
+                continue
+            controller, visible_when = cond
+            shown = controller in bool_vars and bool_vars[controller].get() == visible_when
+            for w in row_widgets.get(dep_key, []):
+                if shown:
+                    w.grid()
+                else:
+                    w.grid_remove()
+
+    for ctrl_key, var in bool_vars.items():
+        # Only need a trace if some field depends on this controller
+        if any((_get_condition(k) or (None,))[0] == ctrl_key for k in all_keys):
+            var.trace_add("write", lambda *_: _apply_visibility())
+
+    _apply_visibility()
 
     # Configure column weights for resizing
     window.columnconfigure(1, weight=1)
@@ -340,6 +427,9 @@ def gui_task_args(
     def on_run():
         # Merge values first for validation
         for key in all_keys:
+            if key in bool_vars:
+                config[key] = bool(bool_vars[key].get())
+                continue
             entry_value = entries[key].get().strip()
             original_value = config.get(key)
             if isinstance(original_value, list):
