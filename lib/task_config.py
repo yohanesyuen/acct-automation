@@ -87,26 +87,38 @@ TASK_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "extract_invoices": {
         "root": "OUTPUT_DIR",
         "pdf_dir": "",
-        "uie_pdf": "",
-        "lp_pdf": "",
-        "mjm_pdf": "",
+        "auto_detect_vendor": True,
+        "vendor": "UIE Industrial",
     },
 }
 
 
-# Field type hints for the GUI — determines which picker to show
+# Field type hints for the GUI — determines which widget to show
 # "directory": folder browser
 # "file_save:<ext>": file save dialog with extension filter
+# "checkbox": boolean checkbutton
+# "dropdown:<opt1,opt2,...>": read-only combobox with the given options
 # "text": plain text entry (default)
 FIELD_TYPES: Dict[str, str] = {
     "root": "directory",
     "pdf_dir": "directory",
+    "auto_detect_vendor": "checkbox",
+    "vendor": "dropdown:UIE Industrial,LP Construction,MJM Services",
     "attachments_subdir": "text",
     "excel_subdir": "text",
     "raw_emails_subdir": "text",
     "source_subdir": "text",
     "dest_subdir": "text",
     "report_file": "file_save:csv,xlsx",
+}
+
+
+# Fields that are only shown in the GUI when a controlling field holds a
+# specific value. Maps a field key -> (controller_key, value_that_shows_it).
+# When the controller is a checkbox, toggling it dynamically shows/hides the
+# dependent field without rebuilding the form.
+CONDITIONAL_FIELDS: Dict[str, tuple] = {
+    "vendor": ("auto_detect_vendor", False),
 }
 
 
