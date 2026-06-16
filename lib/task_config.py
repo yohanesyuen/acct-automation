@@ -188,11 +188,26 @@ def load_task_config(task_name: str, config_dir: str = None) -> Dict[str, Any]:
             with open(config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
             if _is_valid_config(config):
-                # Ensure all default keys exist (for forward compatibility)
                 defaults = _get_default_config(task_name)
+                changed = False
+
+                # Ensure all default keys exist (for forward compatibility)
                 for key, value in defaults.items():
                     if key not in config:
                         config[key] = value
+                        changed = True
+
+                # Prune keys removed from the schema (e.g. retired fields) so
+                # stale entries don't linger in the YAML or show up in the GUI.
+                # Only prune for known tasks where defaults define the schema.
+                if task_name in TASK_DEFAULTS:
+                    for key in [k for k in config if k not in defaults]:
+                        del config[key]
+                        changed = True
+
+                # Persist the cleaned-up config so the file self-heals.
+                if changed:
+                    save_task_config(task_name, config, config_dir)
                 return config
         except Exception:
             pass
