@@ -1,4 +1,6 @@
+import os
 import re
+import sys
 import abc
 from pathlib import Path
 
@@ -200,7 +202,9 @@ class MJMServicesExtractor(InvoiceExtractor):
     ]
 
     TESS_CONFIG = '--psm 6'
-    TESSERACT_CMD = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    TESSERACT_CMD = os.path.expanduser(
+        r"~/AppData/Local/Programs/Tesseract-OCR/tesseract.exe"
+    )
 
     INVOICE_PATTERNS = {
         'invoice_number': r'Inv\s*No[.:]\s*([\w/\-]+)',
@@ -279,6 +283,9 @@ class MJMServicesExtractor(InvoiceExtractor):
 
     def extract(self, pdf_path: str) -> dict:
         import pytesseract
+        if not os.path.isfile(self.TESSERACT_CMD):
+            print(f"Error: Tesseract executable not found at {self.TESSERACT_CMD}")
+            sys.exit(1)
         pytesseract.pytesseract.tesseract_cmd = self.TESSERACT_CMD
         img = self._render_page(pdf_path)
         processed = self._preprocess(img)
