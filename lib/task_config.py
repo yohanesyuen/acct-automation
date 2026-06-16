@@ -287,6 +287,9 @@ def parse_task_args(
     # Auto-save the final config back to YAML
     save_task_config(task_name, final_config)
 
+    # Expose no_gui flag to the script without persisting it
+    final_config["_no_gui"] = no_gui
+
     return final_config
 
 

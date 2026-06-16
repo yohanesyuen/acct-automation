@@ -9,21 +9,22 @@ from typing import Generator, List, Optional, Union
 
 
 def filter_emails(
-    inbox,
+    folder,
     sender_email: Optional[Union[str, List[str]]] = None,
     keyword: Optional[Union[str, List[str]]] = None,
     require_attachments: bool = True,
     verbose: bool = False,
+    include_subfolders: bool = False,
 ) -> Generator:
     """
     Yield emails matching optional sender address and keyword filters.
 
-    Iterates over all items in the given Outlook folder, yielding those
-    that satisfy all provided criteria. All filters are optional — if none
-    are specified, all items (optionally with attachments) are yielded.
+    Iterates over all items in the given Outlook folder (and optionally all
+    of its subfolders), yielding those that satisfy all provided criteria.
+    All filters are optional.
 
     Args:
-        inbox: Outlook folder COM object (e.g. Inbox) to iterate.
+        folder: Outlook folder COM object (e.g. Inbox) to iterate.
         sender_email: Optional sender filter. Can be:
                       - A single string (substring match, case-insensitive)
                       - A list of strings (match if ANY sender matches)
@@ -35,6 +36,7 @@ def filter_emails(
         require_attachments: If True, only yield emails that have at
                             least one attachment.
         verbose: If True, print diagnostic info about filter decisions.
+        include_subfolders: If True, also search all subfolders recursively.
 
     Yields:
         Outlook MailItem COM objects that match all criteria.
@@ -55,53 +57,69 @@ def filter_emails(
     else:
         keyword_list = list(keyword) if keyword else None
 
+    # Collect folders to search
+    if include_subfolders:
+        from .connection import iter_subfolders
+        folders = list(iter_subfolders(folder))
+        if verbose:
+            print(f"  [filter] Searching {len(folders)} folder(s) (including subfolders)")
+    else:
+        folders = [folder]
+
     total_scanned = 0
     sender_matched = 0
     keyword_matched = 0
     attachment_filtered = 0
     yielded = 0
 
-    for email in inbox.Items:
-        try:
-            sender = email.SenderEmailAddress or ""
-            subject = email.Subject or ""
-            body = email.Body or ""
-        except Exception:
-            continue
+    for current_folder in folders:
+        if verbose and include_subfolders:
+            try:
+                print(f"  [filter] Scanning: {current_folder.Name}")
+            except Exception:
+                pass
 
-        total_scanned += 1
-
-        # Sender match (if specified) — match if ANY entry is a substring
-        if sender_list:
-            sender_lower = sender.lower()
-            if not any(s.lower() in sender_lower for s in sender_list):
-                if verbose and total_scanned <= 5:
-                    print(f"  [filter] SKIP sender mismatch: {sender[:60]}")
+        for email in current_folder.Items:
+            try:
+                sender = email.SenderEmailAddress or ""
+                subject = email.Subject or ""
+                body = email.Body or ""
+            except Exception:
                 continue
-            sender_matched += 1
 
-        # Keyword match (if specified) — match if ANY keyword in subject or body
-        if keyword_list:
-            subject_lower = subject.lower()
-            body_lower = body.lower()
-            if not any(k.lower() in subject_lower or k.lower() in body_lower for k in keyword_list):
+            total_scanned += 1
+
+            # Sender match (if specified) — match if ANY entry is a substring
+            if sender_list:
+                sender_lower = sender.lower()
+                if not any(s.lower() in sender_lower for s in sender_list):
+                    if verbose and not include_subfolders and total_scanned <= 5:
+                        print(f"  [filter] SKIP sender mismatch: {sender[:60]}")
+                    continue
+                sender_matched += 1
+
+            # Keyword match (if specified) — match if ANY keyword in subject or body
+            if keyword_list:
+                subject_lower = subject.lower()
+                body_lower = body.lower()
+                if not any(k.lower() in subject_lower or k.lower() in body_lower for k in keyword_list):
+                    if verbose:
+                        print(f"  [filter] SKIP keyword mismatch: \"{subject[:50]}\" (sender: {sender[:40]})")
+                    continue
+                keyword_matched += 1
+
+            # Attachment requirement
+            if require_attachments and email.Attachments.Count == 0:
+                attachment_filtered += 1
                 if verbose:
-                    print(f"  [filter] SKIP keyword mismatch: \"{subject[:50]}\" (sender: {sender[:40]})")
+                    print(f"  [filter] SKIP no attachments: \"{subject[:50]}\"")
                 continue
-            keyword_matched += 1
 
-        # Attachment requirement
-        if require_attachments and email.Attachments.Count == 0:
-            attachment_filtered += 1
-            if verbose:
-                print(f"  [filter] SKIP no attachments: \"{subject[:50]}\"")
-            continue
-
-        yielded += 1
-        if verbose and yielded <= 10:
-            print(f"  [filter] MATCH: \"{subject[:50]}\" (sender: {sender[:40]}, "
-                  f"attachments: {email.Attachments.Count})")
-        yield email
+            yielded += 1
+            if verbose and yielded <= 10:
+                print(f"  [filter] MATCH: \"{subject[:50]}\" (sender: {sender[:40]}, "
+                      f"attachments: {email.Attachments.Count})")
+            yield email
 
     if verbose:
         print(f"\n  [filter] Summary: scanned={total_scanned}, sender_match={sender_matched}, "
