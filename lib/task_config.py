@@ -89,6 +89,7 @@ TASK_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "pdf_dir": "",
         "auto_detect_vendor": True,
         "vendor": "UIE Industrial",
+        "report_file": "Invoice_Extract_Report.csv",
     },
 }
 

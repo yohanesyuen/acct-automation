@@ -6,12 +6,18 @@ auto-detected from each PDF's content ('auto_detect_vendor': True). Disable
 auto-detection — via the GUI checkbox, the YAML, or by passing '--vendor' on
 the CLI — to force a single vendor's extractor for every PDF.
 
+Extracted data is saved as CSV under the task root for later processing:
+  - '<report_file>.csv': one row per PDF with the scalar invoice fields.
+  - '<report_file>_line_items.csv': line items in tidy/long format
+    (source_file, vendor, line_no, column, value).
+
 Usage:
     python scripts/extract_invoices.py
     python scripts/extract_invoices.py --no-gui --pdf-dir /path/to/invoices
     python scripts/extract_invoices.py --no-gui --pdf-dir /path --vendor "MJM Services"
 """
 
+import csv
 import os
 import sys
 from pathlib import Path
@@ -25,7 +31,7 @@ from lib.extraction import (
     find_pdfs,
     guess_extractor,
 )
-from lib.task_config import parse_task_args
+from lib.task_config import parse_task_args, get_report_path
 
 # Vendor display name -> extractor class. Display names mirror the GUI dropdown
 # options in FIELD_TYPES['vendor'].
@@ -58,6 +64,37 @@ def _print_result(result: dict) -> None:
         print("\n  No line items found.")
 
 
+def _write_csv(path: str, fieldnames: list, rows: list) -> None:
+    """Write rows (list of dicts) to a CSV. utf-8-sig opens cleanly in Excel."""
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, restval="", extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _save_reports(config, summary_rows, field_keys, line_item_rows) -> None:
+    """Persist extracted fields and line items as CSVs under the task root."""
+    if not summary_rows:
+        print("\nNothing extracted — no report written.")
+        return
+
+    # Force a .csv extension regardless of the configured report_file name.
+    stem = os.path.splitext(config.get("report_file") or "")[0] or "Invoice_Extract_Report"
+
+    summary_path = get_report_path(config, f"{stem}.csv")
+    _write_csv(summary_path, ["source_file", "vendor"] + field_keys, summary_rows)
+    print(f"\nSaved invoice fields → {summary_path}")
+
+    if line_item_rows:
+        line_items_path = get_report_path(config, f"{stem}_line_items.csv")
+        _write_csv(
+            line_items_path,
+            ["source_file", "vendor", "line_no", "column", "value"],
+            line_item_rows,
+        )
+        print(f"Saved line items    → {line_items_path}")
+
+
 def extract_invoices(config):
     pdf_dir = (config.get("pdf_dir") or "").strip()
     auto_detect = bool(config.get("auto_detect_vendor", True))
@@ -84,6 +121,10 @@ def extract_invoices(config):
     mode = "auto-detect" if auto_detect else f"forced vendor: {vendor}"
     print(f"Scanning {len(pdfs)} PDF(s) in {pdf_dir} ({mode})\n")
 
+    summary_rows = []     # one dict per PDF (scalar invoice fields)
+    field_keys = []       # ordered union of scalar field names across PDFs
+    line_item_rows = []   # tidy/long format: one dict per line-item cell
+
     for pdf_path in pdfs:
         print(f"\n{'='*60}")
         print(f"  {pdf_path.name}")
@@ -99,9 +140,33 @@ def extract_invoices(config):
 
         try:
             result = extractor_cls().extract(str(pdf_path))
-            _print_result(result)
         except Exception as e:
             print(f"  Error: {e}")
+            continue
+
+        line_items = result.get("line_items")
+        _print_result(result)  # pops 'line_items'; leaves scalar fields
+
+        summary = {"source_file": pdf_path.name, "vendor": label}
+        summary.update(result)
+        summary_rows.append(summary)
+        for key in result:
+            if key not in field_keys:
+                field_keys.append(key)
+
+        if line_items:
+            headers, *rows = line_items
+            for line_no, row in enumerate(rows, 1):
+                for col, val in zip(headers, row):
+                    line_item_rows.append({
+                        "source_file": pdf_path.name,
+                        "vendor": label,
+                        "line_no": line_no,
+                        "column": col,
+                        "value": val,
+                    })
+
+    _save_reports(config, summary_rows, field_keys, line_item_rows)
 
 
 if __name__ == '__main__':
@@ -111,7 +176,7 @@ if __name__ == '__main__':
     config = parse_task_args(
         description="Extract invoice data from PDFs in a folder.",
         default_task="extract_invoices",
-        config_keys=['pdf_dir', 'auto_detect_vendor', 'vendor'],
+        config_keys=['pdf_dir', 'auto_detect_vendor', 'vendor', 'report_file'],
     )
 
     # If the vendor was explicitly passed as a CLI arg, force it.
