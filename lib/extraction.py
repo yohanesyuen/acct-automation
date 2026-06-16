@@ -17,15 +17,37 @@ def find_pdfs(folder: str):
     yield from sorted(Path(folder).rglob("*.pdf"))
 
 
+def _extractor_by_folder(pdf_path: str):
+    """
+    Return an extractor class if any ancestor folder name matches a FOLDER_HINTS
+    entry, otherwise None.  Checks all path components so a hint in any parent
+    folder (not just the immediate parent) is detected.
+    """
+    parts = [p.lower() for p in Path(pdf_path).parts]
+    candidates = [UIEIndustrialExtractor, LPConstructionExtractor, MJMServicesExtractor]
+    for cls in candidates:
+        if any(hint in part for hint in cls.FOLDER_HINTS for part in parts):
+            return cls
+    return None
+
+
 def guess_extractor(pdf_path: str):
     """
     Return the best-matching InvoiceExtractor subclass for a PDF, or None.
 
-    Reads text via pdfplumber and scores each extractor's FINGERPRINTS.
-    Falls back to MJMServicesExtractor when the extracted text is too sparse
-    (< 100 chars), which typically indicates a scanned/image-only PDF.
+    Resolution order:
+    1. Folder hint: if any ancestor directory name contains a company shorthand
+       (e.g. "mjm", "uie", "lp"), that extractor is used immediately.
+    2. Fingerprint scoring: pdfplumber text is checked against each extractor's
+       FINGERPRINTS regex list; highest score wins.
+    3. Sparse-text fallback: if pdfplumber returns < 100 chars, the PDF is
+       likely scanned — MJMServicesExtractor (OCR) is used.
     """
     _SPARSE_THRESHOLD = 100
+
+    hint_cls = _extractor_by_folder(pdf_path)
+    if hint_cls is not None:
+        return hint_cls
 
     try:
         text = _read_pdf_text(pdf_path)
@@ -66,6 +88,7 @@ class InvoiceExtractor(abc.ABC):
     INVOICE_PATTERNS: dict = {}
     LINE_ITEM_COLS: list = []
     FINGERPRINTS: list = []   # Regex patterns that identify this company's PDFs
+    FOLDER_HINTS: list = []   # Lowercase substrings matched against folder names
     FLAGS: int = re.IGNORECASE
 
     def extract_fields(self, text: str) -> dict:
@@ -85,6 +108,7 @@ class InvoiceExtractor(abc.ABC):
 
 
 class UIEIndustrialExtractor(InvoiceExtractor):
+    FOLDER_HINTS = ['uie']
     FINGERPRINTS = [
         r'UIE',
         r'NET\s*TOTAL\s*\[SGD\]',
@@ -128,6 +152,7 @@ class LPConstructionExtractor(InvoiceExtractor):
     # MULTILINE needed: LINE_ITEM_PATTERN uses ^ and $; 'company' pattern spans \n
     FLAGS = re.IGNORECASE | re.MULTILINE
 
+    FOLDER_HINTS = ['lp']
     FINGERPRINTS = [
         r'L\.?\s*P\.?\s*CONSTRUCTION',
         r'Paynow\s*UEN',
@@ -167,6 +192,7 @@ class LPConstructionExtractor(InvoiceExtractor):
 class MJMServicesExtractor(InvoiceExtractor):
     # Primary detection is via the sparse-text fallback in guess_extractor;
     # these fingerprints handle edge cases where pdfplumber does extract text.
+    FOLDER_HINTS = ['mjm']
     FINGERPRINTS = [
         r'MJM',
         r'Inv\s*No',
