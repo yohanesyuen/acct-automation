@@ -86,9 +86,10 @@ TASK_DEFAULTS: Dict[str, Dict[str, Any]] = {
     },
     "extract_invoices": {
         "root": "OUTPUT_DIR",
-        "uie_pdf": "PDF_PATH",
-        "lp_pdf": "PDF_PATH",
-        "mjm_pdf": "PDF_PATH",
+        "pdf_dir": "",
+        "uie_pdf": "",
+        "lp_pdf": "",
+        "mjm_pdf": "",
     },
 }
 
@@ -99,6 +100,7 @@ TASK_DEFAULTS: Dict[str, Dict[str, Any]] = {
 # "text": plain text entry (default)
 FIELD_TYPES: Dict[str, str] = {
     "root": "directory",
+    "pdf_dir": "directory",
     "attachments_subdir": "text",
     "excel_subdir": "text",
     "raw_emails_subdir": "text",

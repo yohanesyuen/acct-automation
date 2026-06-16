@@ -1,5 +1,6 @@
 import re
 import abc
+from pathlib import Path
 
 
 def _read_pdf_text(pdf_path: str) -> str:
@@ -9,6 +10,38 @@ def _read_pdf_text(pdf_path: str) -> str:
         for page in pdf.pages:
             page_texts.append(page.extract_text() or '')
     return '\n'.join(page_texts)
+
+
+def find_pdfs(folder: str):
+    """Recursively yield Path objects for every PDF file under folder."""
+    yield from sorted(Path(folder).rglob("*.pdf"))
+
+
+def guess_extractor(pdf_path: str):
+    """
+    Return the best-matching InvoiceExtractor subclass for a PDF, or None.
+
+    Reads text via pdfplumber and scores each extractor's FINGERPRINTS.
+    Falls back to MJMServicesExtractor when the extracted text is too sparse
+    (< 100 chars), which typically indicates a scanned/image-only PDF.
+    """
+    _SPARSE_THRESHOLD = 100
+
+    try:
+        text = _read_pdf_text(pdf_path)
+    except Exception:
+        return None
+
+    if len(text.strip()) < _SPARSE_THRESHOLD:
+        return MJMServicesExtractor
+
+    candidates = [UIEIndustrialExtractor, LPConstructionExtractor, MJMServicesExtractor]
+    scores = {
+        cls: sum(1 for fp in cls.FINGERPRINTS if re.search(fp, text, re.IGNORECASE))
+        for cls in candidates
+    }
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else None
 
 
 class InvoiceExtractor(abc.ABC):
@@ -32,6 +65,7 @@ class InvoiceExtractor(abc.ABC):
 
     INVOICE_PATTERNS: dict = {}
     LINE_ITEM_COLS: list = []
+    FINGERPRINTS: list = []   # Regex patterns that identify this company's PDFs
     FLAGS: int = re.IGNORECASE
 
     def extract_fields(self, text: str) -> dict:
@@ -51,6 +85,13 @@ class InvoiceExtractor(abc.ABC):
 
 
 class UIEIndustrialExtractor(InvoiceExtractor):
+    FINGERPRINTS = [
+        r'UIE',
+        r'NET\s*TOTAL\s*\[SGD\]',
+        r'UEN:\s*\w',       # "UEN: T12..." (not "Paynow UEN")
+        r'QT[\d/]+',        # quotation reference number
+    ]
+
     INVOICE_PATTERNS = {
         'invoice_number': r'NO\.\s*([\w/]+)',
         'invoice_date':   r'DATE\s+(\d{2}/\d{2}/\d{4})',
@@ -87,6 +128,13 @@ class LPConstructionExtractor(InvoiceExtractor):
     # MULTILINE needed: LINE_ITEM_PATTERN uses ^ and $; 'company' pattern spans \n
     FLAGS = re.IGNORECASE | re.MULTILINE
 
+    FINGERPRINTS = [
+        r'L\.?\s*P\.?\s*CONSTRUCTION',
+        r'Paynow\s*UEN',
+        r'DBS\s*Account',
+        r'Sub\s*Total\s*\(Excluding\s*Tax\)',
+    ]
+
     INVOICE_PATTERNS = {
         'invoice_number': r'Ref No\.\s*:\s*([\w\-]+)',
         'invoice_date':   r'Date\s*:\s*(\d{2}/\d{2}/\d{4})',
@@ -117,6 +165,14 @@ class LPConstructionExtractor(InvoiceExtractor):
 
 
 class MJMServicesExtractor(InvoiceExtractor):
+    # Primary detection is via the sparse-text fallback in guess_extractor;
+    # these fingerprints handle edge cases where pdfplumber does extract text.
+    FINGERPRINTS = [
+        r'MJM',
+        r'Inv\s*No',
+        r'Net\s*Total',
+    ]
+
     TESS_CONFIG = '--psm 6'
     TESSERACT_CMD = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
