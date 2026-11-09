@@ -41,10 +41,7 @@ General-purpose accounting automation tool. Automates repetitive tasks: email pr
 
 ## Outlook / COM Automation
 
-- Do NOT run or execute anything that invokes Outlook or any Office COM automation.
-- Treat Outlook and the Exchange/MAPI layer as a black box — write code against its interface but never call it locally.
-- Test with mocks, stubs, or sample data. Never use live COM connections.
-- When verifying scripts, limit checks to syntax/import — do not attempt runtime execution of Outlook-dependent code.
+Global rules cover the no-Outlook-execution/mocks-only policy. Addendum for this project: when verifying scripts, limit checks to syntax/import — do not attempt runtime execution of Outlook-dependent code.
 
 ## Python Notebooks
 
